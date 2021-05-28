@@ -11,12 +11,12 @@ Request raw data from provided data source.
 
 2. Service:
     - Interfaces:
-        - `AbstractSpiderService`
+        - `BaseSpiderService`
             - Description: Defines the common interface for all spider service implementations
             - methods:
                 - `async get(data_src: URL) -> HTTPResponse`
                 - `async get_many(data_src: List[URL])`
-        - `AbstractCollectionService`
+        - `BaseCollectionService`
             - Description: Provides the common interface for accessing data in a collection
             - methods:
                 - `async add(data: DataModel)`

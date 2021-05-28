@@ -14,3 +14,6 @@ class JobResultResponse(ResponseModel):
 class ResultQueryResponse(ResponseModel):
     data: List[HTMLData]
     query: ResultQuery
+
+class SinglePageResponse(ResponseModel):
+    data: HTMLData

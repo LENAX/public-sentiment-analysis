@@ -1,20 +1,47 @@
-from fastapi import FastAPI
+from os import getenv
+from aiohttp import ClientSession, client_exceptions
+from fastapi import BackgroundTasks, Depends,  FastAPI, HTTPException
 from datetime import datetime
 from .enums import JobStatus
 from .models.request_models import ResultQuery, JobSpecification
 from .models.response_models import (
     JobCreationResponse,
     JobResultResponse,
-    ResultQueryResponse
+    ResultQueryResponse,
+    SinglePageResponse
 )
 from .models.data_models import (
+    URL,
     JobCreationStatus,
     JobResult,
-    HTMLData
+    HTMLData,
+    RequestHeader
 )
-
+from .service import HTMLSpiderService
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    def create_http_session():
+        header_accept = getenv(
+            "HEADER_ACCEPT", "text/html, application/xhtml+xml, application/xml, image/webp, */*")
+        user_agent = getenv(
+            "USER_AGENT", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36")
+        cookie = getenv("COOKIE", "")
+        headers = RequestHeader(
+            accept=header_accept,
+            user_agent=user_agent,
+            cookie=cookie
+        )
+        return ClientSession(headers=dict(headers))
+
+    app.client_session = create_http_session()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await app.client_session.close()
 
 
 @app.get("/")
@@ -22,23 +49,33 @@ async def welcome():
     return {"message": "Welcome to sentiment analysis! I am a little spider."}
 
 
-@app.get("/html")
+@app.get("/html", response_model=HTMLData)
 async def get_single_page(url: str):
     """ Get a single page for testing purposes.
     """
-    return {'url': url}
+    
+    html_spider = HTMLSpiderService(
+        session=app.client_session, html_data_mapper=None)
+    try:
+        html = await html_spider.get(data_src=URL(url=url))
+    except client_exceptions.InvalidURL as e:
+        raise HTTPException(status_code=400, detail=f"Invalid url {e}. Missing 'http://'?")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"{e}")
+    
+    return HTMLData(html=html)
 
 
-@app.post("/new-job")
-async def create_new_job(job: JobSpecification):
-    return JobCreationResponse(
-            creation_status=JobCreationStatus(
-                job_id="aaa",
-                create_dt=datetime.now(),
-                specification=job
-            ),
-            status_code=200,
-            message="success").dict()
+@app.post("/new-job", response_model=JobCreationStatus)
+async def create_new_job(job: JobSpecification, background_tasks: BackgroundTasks):
+    # TODO: refactor the instantiation using DI
+    html_spider = HTMLSpiderService(
+        session=app.client_session, html_data_mapper=None)
+    background_tasks.add_task(
+        html_spider.get_many, data_src=job.urls)
+    return JobCreationStatus(job_id="aaa",
+                             create_dt=datetime.now(),
+                             specification=job)
 
 
 @app.get("/result/{job_id}")

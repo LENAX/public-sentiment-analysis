@@ -1,5 +1,8 @@
 from .data_models import (
+    DataModel,
     JobCreationStatus,
     JobResult,
-    HTMLData
+    HTMLData,
+    URL,
+    RequestHeader
 )
