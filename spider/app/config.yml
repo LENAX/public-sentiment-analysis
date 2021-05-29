@@ -8,6 +8,7 @@ base: &base
     username: ${USERNAME}
     password: ${PASSWORD}
     port: ${PORT}
+    db_name: ${DB_NAME}
 local_development:
   headers:
     header_accept: text/html, application/xhtml+xml, application/xml, image/webp, */*
@@ -18,6 +19,7 @@ local_development:
     username: root
     password: Password_#123
     port: 27017
+    db_name: spiderDB
 development:
   <<: *base
 test:
