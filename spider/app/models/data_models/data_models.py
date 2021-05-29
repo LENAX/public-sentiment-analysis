@@ -6,6 +6,7 @@ from ..request_models import (
     JobSpecification
 )
 from ...enums import JobStatus
+from ...utils.regex_patterns import domain_pattern
 
 class DataModel(BaseModel):
     pass
@@ -23,22 +24,42 @@ class JobResult(BaseModel):
     data: Any
 
 
+class URL(BaseModel):
+    """ Holds an url and its domain name.
+
+    If domain name is not specified, it will be guessed from the url
+
+    Fields:
+        url: str
+        domain: Optional[str]
+    """
+    url: str
+    domain: Optional[str] = None
+
+    def __init__(self, **data: Any) -> None:
+        super().__init__(**data)
+        parsed_domain = domain_pattern.findall(self.url)
+
+        if self.domain is None and len(parsed_domain):
+            # auto fills domain name if not provided
+            self.domain = parsed_domain[0]
+
+
 class HTMLData(BaseModel):
     """ Builds a html data representation
 
     Fields:
+        url: URL
         html: str
-        domain: str
-        keywords: Optional[List[str]]
+        create_dt: datetime
+        job_id: Optional[str]
+        keywords: Optional[List[str]] = []
     """
+    url: URL
     html: str
-    domain: str = ''
+    create_dt: datetime
+    job_id: Optional[str]
     keywords: Optional[List[str]] = []
-
-
-class URL(BaseModel):
-    url: str
-    domain: Optional[str]
 
 
 class RequestHeader(BaseModel):
