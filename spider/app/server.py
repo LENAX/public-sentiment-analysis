@@ -1,24 +1,21 @@
-from os import getenv
 from aiohttp import ClientSession, client_exceptions
-from fastapi import BackgroundTasks, Depends,  FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from datetime import datetime
 from .enums import JobStatus
 from .models.request_models import ResultQuery, JobSpecification
 from .models.response_models import (
-    JobCreationResponse,
     JobResultResponse,
-    ResultQueryResponse,
-    SinglePageResponse
+    ResultQueryResponse
 )
 from .models.data_models import (
     URL,
     JobCreationStatus,
     JobResult,
-    HTMLData,
-    RequestHeader
+    HTMLData
 )
 from .config import config
 from .service import HTMLSpiderService
+from .db import create_client
 
 app = FastAPI()
 
@@ -28,6 +25,7 @@ async def startup_event():
         return ClientSession(headers=config['headers'])
 
     app.client_session = create_http_session()
+    app.db_client = create_client(**config['db'])
 
 
 @app.on_event("shutdown")
@@ -59,7 +57,7 @@ async def get_single_page(url: str):
 
 @app.post("/new-job", response_model=JobCreationStatus)
 async def create_new_job(job: JobSpecification, background_tasks: BackgroundTasks):
-    # TODO: refactor the instantiation using DI
+    # TODO: create spider based on given job specification
     html_spider = HTMLSpiderService(
         session=app.client_session, html_data_mapper=None)
     background_tasks.add_task(
@@ -71,14 +69,20 @@ async def create_new_job(job: JobSpecification, background_tasks: BackgroundTask
 
 @app.get("/result/{job_id}")
 async def get_result_by_id(job_id: str):
+    """ Get the scrape result given job id
+    """
+    # TODO: paging, html string truncation, job status query
+
     return JobResultResponse(
             job_result=JobResult(
                 job_id=job_id,
                 status=JobStatus.DONE,
                 message="ok",
                 data=HTMLData(
+                    url=URL(url="http://foobar.com"),
                     html="<html></html>",
-                    domain="http://foobar.com",
+                    job_id=job_id,
+                    create_dt=datetime.now(),
                     keywords=["foo"]
                 )
             ),
