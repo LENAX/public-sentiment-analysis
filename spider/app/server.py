@@ -17,6 +17,7 @@ from .models.data_models import (
     HTMLData,
     RequestHeader
 )
+from .config import config
 from .service import HTMLSpiderService
 
 app = FastAPI()
@@ -24,17 +25,7 @@ app = FastAPI()
 @app.on_event("startup")
 async def startup_event():
     def create_http_session():
-        header_accept = getenv(
-            "HEADER_ACCEPT", "text/html, application/xhtml+xml, application/xml, image/webp, */*")
-        user_agent = getenv(
-            "USER_AGENT", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36")
-        cookie = getenv("COOKIE", "")
-        headers = RequestHeader(
-            accept=header_accept,
-            user_agent=user_agent,
-            cookie=cookie
-        )
-        return ClientSession(headers=dict(headers))
+        return ClientSession(headers=config['headers'])
 
     app.client_session = create_http_session()
 
