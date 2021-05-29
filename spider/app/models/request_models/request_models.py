@@ -1,9 +1,7 @@
-from typing import Optional, List, Any
-from pydantic import BaseModel, Field
+from typing import Optional, List
+from pydantic import BaseModel
 from datetime import datetime
-from dataclasses import dataclass
 from ...enums import ContentType
-
 
 
 class JobSpecification(BaseModel):
