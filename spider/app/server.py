@@ -1,7 +1,7 @@
 from aiohttp import ClientSession, client_exceptions
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from datetime import datetime
-from .enums import JobStatus
+from .enums import JobState
 from .models.request_models import ResultQuery, JobSpecification
 from .models.response_models import (
     JobResultResponse,
@@ -9,7 +9,7 @@ from .models.response_models import (
 )
 from .models.data_models import (
     URL,
-    JobCreationStatus,
+    JobStatus,
     JobResult,
     HTMLData
 )
@@ -31,6 +31,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await app.client_session.close()
+    await app.db_client.close()
 
 
 @app.get("/")
@@ -55,14 +56,25 @@ async def get_single_page(url: str):
     return HTMLData(html=html)
 
 
-@app.post("/new-job", response_model=JobCreationStatus)
+@app.post("/new-job", response_model=JobStatus)
 async def create_new_job(job: JobSpecification, background_tasks: BackgroundTasks):
+    """ Create a new job and start immediately
+    
+    High level business logic:
+    1. create a job according to the given specification
+    2. create a spider according to the job type
+    3. initiate a background task
+    4. return a JobStatus object
+    """
+    # High level business logic:
+
+    
     # TODO: create spider based on given job specification
     html_spider = HTMLSpiderService(
         session=app.client_session, html_data_mapper=None)
     background_tasks.add_task(
         html_spider.get_many, data_src=job.urls)
-    return JobCreationStatus(job_id="aaa",
+    return JobStatus(job_id="aaa",
                              create_dt=datetime.now(),
                              specification=job)
 
@@ -76,7 +88,7 @@ async def get_result_by_id(job_id: str):
     return JobResultResponse(
             job_result=JobResult(
                 job_id=job_id,
-                status=JobStatus.DONE,
+                status=JobState.DONE,
                 message="ok",
                 data=HTMLData(
                     url=URL(url="http://foobar.com"),

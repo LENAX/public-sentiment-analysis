@@ -6,10 +6,10 @@ class BaseSpiderService(ABC):
     """ Defines common interface for spider services.
     """
 
-    def get(data_src: URL) -> Any:
+    def get(self, data_src: URL) -> Any:
         return NotImplemented
 
-    def get_many(data_src: List[URL]) -> Any:
+    def get_many(self, data_src: List[URL], rules: Any, **kwargs) -> Any:
         return NotImplemented
 
 
@@ -17,14 +17,36 @@ class BaseCollectionService(ABC):
     """ Provides the common interface for accessing data in a collection
     """
 
-    def add(data: DataModel) -> Any:
+    def add(self, data: DataModel) -> Any:
         return NotImplemented
 
-    def get(query_condition: dict) -> DataModel:
+    def get(self, query_condition: dict) -> DataModel:
         return NotImplemented
 
-    def update(data: DataModel) -> Any:
+    def update(self, data: DataModel) -> Any:
         return NotImplemented
 
-    def delete(query_condition: dict) -> DataModel:
+    def delete(self, query_condition: dict) -> DataModel:
+        return NotImplemented
+
+
+class BaseJobService(ABC):
+    """ Provides the common interface for handling spider jobs
+    """
+
+    def start(self, **kwargs) -> Any:
+        return NotImplemented
+
+    def get_state(self) -> Any:
+        return NotImplemented
+
+
+class BaseServiceFactory(ABC):
+    """ Provides the common interface for creating services
+    """
+
+    def create(self, spec: Any, **kwargs) -> Any:
+        return NotImplemented
+
+    def register(self, name: str, product: Any, **kwargs) -> Any:
         return NotImplemented
