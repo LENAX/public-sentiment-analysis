@@ -20,29 +20,49 @@ Request raw data from provided data source.
 3. What information a spider job should provide?
    1. Options
       1. Follow the KISS principle: only record the necessary information.
-        - list of urls
+        - some parts of job specification
+          - urls
+          - job type
         - current status: one of (pending, working, done, failed)
+        - progress
+          - page crawled
+          - time used
         - creation datetime 
 
 ### Spider Job Specification
 - Describes what kind of task a spider should perform
 - It typically includes
   - urls
+    - Description: the starting points of a spider job
+      - For example, you may want to crawl a e-commerce website on some categories of products
+      - You provide the urls of the product pages so the spider can start crawling
   - job type
-  - data type
+    - Description: describes what kind of task the spider should perform
+      - Internally it is used to create a specialized spider for that task
+    - Supported type:
+      - basic web page scraping
+        - only scrape the provided urls and return the html of those urls
+      - search result aggregation
+        - perform searches on search engines or general search page and retrieve their results
+      - web crawling
+        - Start from seed urls, follow all links available. If a sitemap is available, the spider will follow that sitemap.
+        - You choose whether the spider should respect the crawling policy. If the spider respects the policy, it will not crawl the urls in robots.txt.
   - scrape rules
     - keyword rules
+      - Description: check whether the keyword is in the html content
       - include
       - exclude
-    - topic rules
-      - include
-      - exclude
+
     - size limit
       - maximum pages
       - maximum entries
+    - time limit
+      - past days
+      - date before
+      - date after
     - regular expression
     - max retry
-
+  - data_collection
 
 ## Design
 
@@ -68,9 +88,10 @@ Request raw data from provided data source.
         - `BaseJobService`
             - Description: Defines the common interface for all job service implementations
             - methods:
-                - `async add(job_spec: JobSpecification) -> bool`
-                  - add a job
-                - `async get(data_src: List[URL])`
+                - `create(job_spec: JobSpecification) -> bool`
+                  - create a job
+                - `get(job_id: str)`
+                  - get a job object by id
                 
     - Service Implementations:
         - `HTMLSpiderService`
@@ -167,6 +188,9 @@ Request raw data from provided data source.
     - Enhanced Job Specifications
       - Allow specifying the topic of the data
       - Allow storing data with different topics in separate databases
+    - AI-driven topic rule
+    - Distributed crawler
+    - Use bloom filter to search for keywords
 
 2. API
     - DELETE /job/<job_id>
