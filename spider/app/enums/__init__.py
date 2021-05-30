@@ -1,1 +1,5 @@
-from .enum_classes import JobStatus, ContentType
+from .enum_classes import (
+    JobState,
+    ContentType,
+    JobType
+)

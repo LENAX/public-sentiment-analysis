@@ -1,25 +1,30 @@
 
 from pydantic import BaseModel
 from typing import Optional, List, Any, Union
-from datetime import datetime
+from datetime import datetime, timedelta
 from ..request_models import (
     JobSpecification
 )
-from ...enums import JobStatus
+from ...enums import JobState
 from ...utils.regex_patterns import domain_pattern
 
 class DataModel(BaseModel):
     pass
 
-class JobCreationStatus(BaseModel):
+class JobStatus(BaseModel):
     job_id: str
     create_dt: datetime
+    page_count: int = 0
+    time_consumed: Optional[timedelta]
     specification: JobSpecification
+
+    def save(self, db_client, collection):
+        pass
 
 
 class JobResult(BaseModel):
     job_id: str
-    status: JobStatus
+    status: JobState
     message: str
     data: Any
 
