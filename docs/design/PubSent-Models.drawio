@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2021-06-05T03:21:16.375Z" agent="5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36" etag="B-6kwDnSrn5UwO2eZW5t" version="14.7.6" type="github" pages="7">
+<mxfile host="app.diagrams.net" modified="2021-06-05T03:28:47.786Z" agent="5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36" etag="n4crD679MpFCZ-xTD3EQ" version="14.7.6" type="github" pages="7">
   <diagram id="R2lEEEUBdFMjLlhIrx00" name="Spider Service">
     <mxGraphModel dx="788" dy="493" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0" extFonts="Permanent Marker^https://fonts.googleapis.com/css?family=Permanent+Marker">
       <root>
@@ -346,7 +346,7 @@
         <mxCell id="kveeJIFakIpBsuG1KVUi-169" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-168">
           <mxGeometry width="30" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="kveeJIFakIpBsuG1KVUi-170" value="urls: List[str]" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-168">
+        <mxCell id="kveeJIFakIpBsuG1KVUi-170" value="input: List[str]" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-168">
           <mxGeometry x="30" width="150" height="30" as="geometry" />
         </mxCell>
         <mxCell id="kveeJIFakIpBsuG1KVUi-171" style="shape=partialRectangle;collapsible=0;dropTarget=0;pointerEvents=0;fillColor=none;top=0;left=0;bottom=0;right=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-164">
@@ -355,7 +355,7 @@
         <mxCell id="kveeJIFakIpBsuG1KVUi-172" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-171">
           <mxGeometry width="30" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="kveeJIFakIpBsuG1KVUi-173" value="source_type: Enum" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-171">
+        <mxCell id="kveeJIFakIpBsuG1KVUi-173" value="input_type: Enum" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-171">
           <mxGeometry x="30" width="150" height="30" as="geometry" />
         </mxCell>
         <mxCell id="kveeJIFakIpBsuG1KVUi-174" style="shape=partialRectangle;collapsible=0;dropTarget=0;pointerEvents=0;fillColor=none;top=0;left=0;bottom=0;right=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-164">
@@ -364,7 +364,7 @@
         <mxCell id="kveeJIFakIpBsuG1KVUi-175" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-174">
           <mxGeometry width="30" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="kveeJIFakIpBsuG1KVUi-176" value="source_spec" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-174">
+        <mxCell id="kveeJIFakIpBsuG1KVUi-176" value="function" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-174">
           <mxGeometry x="30" width="150" height="30" as="geometry" />
         </mxCell>
         <mxCell id="kveeJIFakIpBsuG1KVUi-177" value="" style="shape=partialRectangle;collapsible=0;dropTarget=0;pointerEvents=0;fillColor=none;top=0;left=0;bottom=0;right=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-164">
@@ -408,6 +408,18 @@
             <mxPoint x="1120" y="495" as="sourcePoint" />
             <mxPoint x="1220.0000000000005" y="545.0000000000002" as="targetPoint" />
           </mxGeometry>
+        </mxCell>
+        <mxCell id="kveeJIFakIpBsuG1KVUi-215" value="SourceType" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;align=center;fontSize=14;labelBackgroundColor=#FFCE9F;fillColor=#fad7ac;strokeColor=#b46504;" vertex="1" parent="1">
+          <mxGeometry x="1450" y="490" width="180" height="116" as="geometry" />
+        </mxCell>
+        <mxCell id="kveeJIFakIpBsuG1KVUi-216" value="html" style="text;strokeColor=none;fillColor=none;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-215">
+          <mxGeometry y="26" width="180" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="kveeJIFakIpBsuG1KVUi-217" value="image" style="text;strokeColor=none;fillColor=none;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-215">
+          <mxGeometry y="56" width="180" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="kveeJIFakIpBsuG1KVUi-218" value="video" style="text;strokeColor=none;fillColor=none;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=12;" vertex="1" parent="kveeJIFakIpBsuG1KVUi-215">
+          <mxGeometry y="86" width="180" height="30" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
