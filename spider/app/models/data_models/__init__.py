@@ -4,5 +4,7 @@ from .data_models import (
     JobResult,
     HTMLData,
     URL,
-    RequestHeader
+    RequestHeader,
+    ParseRule,
+    ParseResult
 )

@@ -54,6 +54,21 @@ class RequestStatus(str, Enum):
             return cls.SERVER_ERROR
         
 
+class ParseRuleType(str, Enum):
+    """ Parse rule types supported by parsers 
+    
+    One of:
+        XPATH,
+        CSS_SELECTOR,
+        REGEX
+    """
+    XPATH: str = 'xpath'
+    CSS_SELECTOR: str = 'css_selector'
+    REGEX: str = 'regex'
+    CLASS_NAME: str = 'class_name'
+    ELEMENT_ID: str = 'element_id'
+    TEXT_CONTENT: str = 'text_content'
+
 
 class ContentType(str, Enum):
     WEBPAGE: str = 'webpage'

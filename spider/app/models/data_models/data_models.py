@@ -1,11 +1,11 @@
 
 from pydantic import BaseModel
-from typing import Optional, List, Any, Union
+from typing import Optional, List, Any, Union, AnyStr
 from datetime import datetime, timedelta
 from ..request_models import (
     JobSpecification
 )
-from ...enums import JobState
+from ...enums import JobState, ParseRuleType
 from ...utils.regex_patterns import domain_pattern
 
 class DataModel(BaseModel):
@@ -49,6 +49,9 @@ class URL(BaseModel):
             # auto fills domain name if not provided
             self.domain = parsed_domain[0]
 
+    def __hash__(self):
+        return hash(self.__repr__())
+
 
 class HTMLData(BaseModel):
     """ Builds a html data representation
@@ -80,3 +83,29 @@ class RequestHeader(BaseModel):
     authorization: Optional[str] = ""
     user_agent: str
     cookie: Union[str, dict] = ""
+
+
+class ParseRule(BaseModel):
+    """ Defines the parse rule for a parser
+
+    Fields:
+        field_name: str
+        field_value: AnyStr, can be binary value
+        rule: str
+        rule_type: ParseRuleType        
+    """
+    field_name: Optional[str]
+    field_value: Optional[AnyStr]
+    rule: str
+    rule_type: ParseRuleType
+
+
+class ParseResult(BaseModel):
+    """ Defines the parse result from a parser
+    
+    Fields:
+        field_name: str
+        field_value: AnyStr  
+    """
+    name: str
+    value: AnyStr
