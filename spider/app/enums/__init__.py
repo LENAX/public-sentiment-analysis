@@ -1,5 +1,6 @@
 from .enum_classes import (
     JobState,
     ContentType,
-    JobType
+    JobType,
+    RequestStatus
 )
