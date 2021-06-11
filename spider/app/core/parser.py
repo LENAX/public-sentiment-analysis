@@ -1,13 +1,9 @@
-from bs4 import BeautifulSoup
-from lxml import etree
 from abc import ABC
-from typing import Any, List, Dict, Union, Set, Callable, Optional
+from typing import Any, List, Dict, Set
 from ..models.data_models import (
     ParseRule, ParseResult, URL, HTMLData
 )
-from ..enums import ParseRuleType
 from .parse_driver import ParseDriver
-import re
 
 class BaseParsingStrategy(ABC):
     """ Base strategy for parsing text
