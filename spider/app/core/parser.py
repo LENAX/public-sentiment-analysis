@@ -5,11 +5,12 @@ from ..models.data_models import (
 )
 from .parse_driver import ParseDriver
 
+
 class BaseParsingStrategy(ABC):
     """ Base strategy for parsing text
     """
 
-    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
+    def parse(self, text: str, rules: List[ParseRule]):
         return NotImplemented
 
 
@@ -102,7 +103,39 @@ class LinkParser(BaseParsingStrategy):
                         name=link_url['text'], value=link_url['href']))
 
         return list(parsed_links)
-        
+
+
+"""
+public class Context {
+   private Strategy strategy;
+
+   public Context(Strategy strategy){
+      this.strategy = strategy;
+   }
+
+   public int executeStrategy(int num1, int num2){
+      return strategy.doOperation(num1, num2);
+   }
+}
+"""
+
+
+class ParserContext(object):
+
+    def __init__(self, parsing_strategy: BaseParsingStrategy):
+        self._parsing_strategy = parsing_strategy
+
+    @property
+    def parsing_strategy(self) -> BaseParsingStrategy:
+        return self._parsing_strategy
+
+    @parsing_strategy.setter
+    def parsing_strategy(self, parsing_strategy: BaseParsingStrategy) -> None:
+        self._parsing_strategy = parsing_strategy
+
+    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
+        return self._parsing_strategy.parse(text, rules)
+
 
 
 if __name__ == "__main__":
@@ -162,5 +195,41 @@ if __name__ == "__main__":
         print(parsed_links)
         print(len(parsed_links))
 
-    test_to_run = test_link_parsing
+    
+    def test_flexible_parse():
+        page_text = requests.get(
+            "https://cuiqingcai.com/1319.html").text
+        parser_context = ParserContext(
+            LinkParser(parse_driver_class=ParseDriver))
+        parse_result = parser_context.parse(page_text,
+                                            rules=[ParseRule(
+                                                field_name='date',
+                                                rule_type='xpath',
+                                                rule='//article/header/div/span[1]/span[3]/a')])
+        print(parse_result)
+
+        # switch strategy
+        parser_context.parsing_strategy = HTMLContentParser(parse_driver_class=ParseDriver)
+        parse_result = parser_context.parse(page_text,
+                                            rules=[
+                                                ParseRule(
+                                                    field_name='title',
+                                                    rule_type='xpath',
+                                                    rule='//article/header/h1'),
+                                                ParseRule(
+                                                    field_name='date',
+                                                    rule_type='xpath',
+                                                    rule='//article/header/div/span[1]/span[3]/a'),
+                                                ParseRule(
+                                                    field_name='author',
+                                                    rule_type='xpath',
+                                                    rule='//article/header/div/span[2]/time'),
+                                                ParseRule(
+                                                    field_name='content',
+                                                    rule_type='xpath',
+                                                    rule="//article/div"),
+                                            ])
+        print(parse_result)
+
+    test_to_run = test_flexible_parse
     test_to_run()

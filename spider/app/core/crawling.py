@@ -7,5 +7,5 @@ class BaseCrawlingStrategy(ABC):
     """ Base strategy for crawling websites
     """
 
-    async def crawl(self, rules: List[ParseRule]) -> List[ParseResult]:
+    async def crawl(self, rules: List[object]) -> List[object]:
         return NotImplemented
