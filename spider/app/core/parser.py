@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Any, List, Dict, Set
+from typing import List
 from ..models.data_models import (
     ParseRule, ParseResult, URL, HTMLData
 )
@@ -87,8 +87,7 @@ class LinkParser(BaseParsingStrategy):
     def _valid_link(self, link):
         return link and len(link) and (link.startswith('http') or link.startswith('/'))
 
-
-    def parse(self, text: str, rules: List[ParseRule]) -> List[URL]:
+    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
         parsed_html = self._parser(text)
         parsed_links = set()
 
@@ -99,7 +98,8 @@ class LinkParser(BaseParsingStrategy):
                         
             for link_url in parsed_html.get_element_attributes(links, ['text', 'href']):
                 if self._valid_link(link_url['href']):
-                    parsed_links.add(URL(name=link_url['text'], url=link_url['href']))
+                    parsed_links.add(ParseResult(
+                        name=link_url['text'], value=link_url['href']))
 
         return list(parsed_links)
         
@@ -162,5 +162,5 @@ if __name__ == "__main__":
         print(parsed_links)
         print(len(parsed_links))
 
-    test_to_run = test_page_finding
+    test_to_run = test_link_parsing
     test_to_run()
