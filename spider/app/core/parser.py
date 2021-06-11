@@ -78,8 +78,6 @@ class HTMLContentParser(BaseParsingStrategy):
         return parsed_content
 
 
-
-
 class LinkParser(BaseParsingStrategy):
     """ Parses a html text and finds all links
 
@@ -109,12 +107,6 @@ class LinkParser(BaseParsingStrategy):
 
         return list(parsed_links)
         
-
-class PageParser(BaseParsingStrategy):
-
-    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
-        return NotImplemented
-
 
 
 if __name__ == "__main__":
@@ -160,5 +152,19 @@ if __name__ == "__main__":
         print(contents)
         print(len(contents))
 
-    test_to_run = test_content_parsing
+    def test_page_finding():
+        page_text = requests.get(
+            "https://search.douban.com/book/subject_search?search_text=java&cat=1001").text
+        print(page_text)
+        link_parser = LinkParser(parse_driver_class=ParseDriver)
+        parsed_links = link_parser.parse(page_text,
+                                         rules=[
+                                             ParseRule(
+                                                 rule_type='xpath',
+                                                 rule="//a[contains(@href,'start=')]")
+                                         ])
+        print(parsed_links)
+        print(len(parsed_links))
+
+    test_to_run = test_page_finding
     test_to_run()
