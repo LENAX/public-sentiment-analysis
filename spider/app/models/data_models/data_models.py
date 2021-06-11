@@ -35,9 +35,11 @@ class URL(BaseModel):
     If domain name is not specified, it will be guessed from the url
 
     Fields:
+        name: Optional[str]
         url: str
         domain: Optional[str]
     """
+    name: Optional[str] = None
     url: str
     domain: Optional[str] = None
 
@@ -90,12 +92,10 @@ class ParseRule(BaseModel):
 
     Fields:
         field_name: str
-        field_value: AnyStr, can be binary value
         rule: str
         rule_type: ParseRuleType        
     """
     field_name: Optional[str]
-    field_value: Optional[AnyStr]
     rule: str
     rule_type: ParseRuleType
 
@@ -105,7 +105,10 @@ class ParseResult(BaseModel):
     
     Fields:
         field_name: str
-        field_value: AnyStr  
+        field_value: str  
     """
     name: str
-    value: AnyStr
+    value: str
+
+    def __hash__(self):
+        return hash(self.__repr__())
