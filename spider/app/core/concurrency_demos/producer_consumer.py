@@ -28,24 +28,30 @@ def parse(text, rule):
     return [element.text_content() for element in selected_elements]
 
 async def producer(queue, production_requests):
-    async def produce_product(product_request):
+    async def produce_product(product_request, semaphore):
         async def make_one_product(worker, request):
-            async with worker.get(request.url) as response:
+            async with semaphore, worker.get(request.url) as response:
                 text = await response.text()
             return text
         
-        async with aiohttp.ClientSession() as session:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'
+        }
+
+        async with aiohttp.ClientSession(headers=headers) as session:
             production_tasks = [asyncio.create_task(make_one_product(session, request))
                                 for request in product_request]
             products = await asyncio.gather(*production_tasks)
             return products
 
+    semaphore = asyncio.Semaphore(2)
+    
     for i, request in enumerate(production_requests):
         # produce an item 
         print(f"I am producing product {i}")
 
         # do some io here
-        product = await produce_product(request)
+        product = await produce_product(request, semaphore)
 
         # send the item to queue
         await queue.put(product)
@@ -69,7 +75,7 @@ async def consumer(queue, consumer_id, process_worker_pool):
         # do some io
     
         tasks = [loop.run_in_executor(
-                    process_worker_pool, partial(parse, text=text, rule='//div'))
+                    process_worker_pool, partial(parse, text=text, rule='//h3/a'))
                     for text in item]
         for task in asyncio.as_completed(tasks, loop=loop):
             results = await task
@@ -83,14 +89,12 @@ async def run_demo(producer, production_requests, consumer, n_consumers):
     queue = asyncio.Queue()
 
     # create consumers
-    with ProcessPoolExecutor(max_workers=8) as pool:
+    with ProcessPoolExecutor(max_workers=4) as pool:
         consumers = [asyncio.create_task(consumer(queue, consumer_id=i, process_worker_pool=pool))
                     for i in range(n_consumers)]
 
         # run the producer and wait for completion
         await producer(queue, production_requests)
-
-        
 
         # wait until the consumer has processed all items
         await queue.join()
@@ -112,13 +116,17 @@ class ScrapeTask:
 
 # create 100 scrape tasks and make them into 10 by 10 groups.
 scrape_tasks = [
-    [ScrapeTask(url="https://www.baidu.com/s?wd=asyncio&pn={i}") for i in range(group_no*100, (group_no+1)*100, 10)]
-    for group_no in range(0, 4)
+    [ScrapeTask(url="https://www.baidu.com/s?wd=python&pn={i}") for i in range(group_no*20, (group_no+1)*20, 10)]
+    for group_no in range(0, 10)
 ]
 
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'
+}
+cookies = {'cookies_are': 'working'}
 
 asyncio.run(
     run_demo(producer=producer,
              production_requests=scrape_tasks,
              consumer=consumer,
-             n_consumers=4))
+             n_consumers=2))
