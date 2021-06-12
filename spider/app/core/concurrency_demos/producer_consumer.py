@@ -51,12 +51,13 @@ async def producer(queue, production_requests):
         await queue.put(product)
 
 
-async def consumer(queue, consumer_id, n_workers=16):
+async def consumer(queue, consumer_id, process_worker_pool):
 
 
     print(f"I am consumer {consumer_id}.")
     loop = asyncio.get_running_loop()
     while True:
+       
         # wait for an item from the producer
         item = await queue.get()
         print(len(item))
@@ -66,13 +67,13 @@ async def consumer(queue, consumer_id, n_workers=16):
         # print(partial(parse, text=item[0], rule='//div'))
 
         # do some io
-        with ProcessPoolExecutor(max_workers=n_workers) as pool:
-            tasks = [loop.run_in_executor(
-                        pool, partial(parse, text=text, rule='//div'))
-                     for text in item]
-            for task in asyncio.as_completed(tasks, loop=loop):
-                results = await task
-                print(results)
+    
+        tasks = [loop.run_in_executor(
+                    process_worker_pool, partial(parse, text=text, rule='//div'))
+                    for text in item]
+        for task in asyncio.as_completed(tasks, loop=loop):
+            results = await task
+            print(results)
 
         # notify the queue that the item has been processed
         queue.task_done()
@@ -81,24 +82,24 @@ async def consumer(queue, consumer_id, n_workers=16):
 async def run_demo(producer, production_requests, consumer, n_consumers):
     queue = asyncio.Queue()
 
-    await asyncio.sleep(3)
     # create consumers
-    consumers = [asyncio.create_task(consumer(queue, consumer_id=i))
-                 for i in range(n_consumers)]
+    with ProcessPoolExecutor(max_workers=8) as pool:
+        consumers = [asyncio.create_task(consumer(queue, consumer_id=i, process_worker_pool=pool))
+                    for i in range(n_consumers)]
 
-    # run the producer and wait for completion
-    await producer(queue, production_requests)
+        # run the producer and wait for completion
+        await producer(queue, production_requests)
 
-    
+        
 
-    # wait until the consumer has processed all items
-    await queue.join()
+        # wait until the consumer has processed all items
+        await queue.join()
 
-    # kill all consumers waiting for an item
-    for consumer in consumers:
-        consumer.cancel()
+        # kill all consumers waiting for an item
+        for consumer in consumers:
+            consumer.cancel()
 
-    await asyncio.gather(*consumers, return_exceptions=True)
+        await asyncio.gather(*consumers, return_exceptions=True)
 
 @dataclass
 class WebPage:
@@ -112,7 +113,7 @@ class ScrapeTask:
 # create 100 scrape tasks and make them into 10 by 10 groups.
 scrape_tasks = [
     [ScrapeTask(url="https://www.baidu.com/s?wd=asyncio&pn={i}") for i in range(group_no*100, (group_no+1)*100, 10)]
-    for group_no in range(0, 3)
+    for group_no in range(0, 4)
 ]
 
 
@@ -120,4 +121,4 @@ asyncio.run(
     run_demo(producer=producer,
              production_requests=scrape_tasks,
              consumer=consumer,
-             n_consumers=2))
+             n_consumers=4))
