@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 from lxml import etree
 from lxml.html import fromstring
-from lxml.etree import _Element
+from lxml.etree import Element
 from functools import partial
 from typing import Callable, List, Any, Union, Dict
 
@@ -49,7 +49,7 @@ class ParseDriver(object):
     def _get_attribute_failed(self, attribute_value) -> bool:
         return attribute_value is None or len(attribute_value) == 0
 
-    def _get_element_attribute(self, element: Union[Tag, _Element], attribute_name: str) -> str:
+    def _get_element_attribute(self, element: Union[Tag, Element], attribute_name: str) -> str:
         """ Due to the poor api design and chaotic nature of html elements, we need to try many ways
             to get attributes from an element.
         """
@@ -95,7 +95,7 @@ class ParseDriver(object):
         
         return selected_elements
 
-    def get_element_attributes(self, elements: List[Union[Tag, _Element]], attribute_names: List[str]) -> List[Dict[str, str]]:
+    def get_element_attributes(self, elements: List[Union[Tag, Element]], attribute_names: List[str]) -> List[Dict[str, str]]:
         return [{attribute_name: self._get_element_attribute(element, attribute_name) for attribute_name in attribute_names}
                 for element in elements]
 
