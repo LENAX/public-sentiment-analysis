@@ -3,7 +3,6 @@ A simple producer/consumer demo, using Queue.task_done and Queue.join
 """
 import aiohttp
 import asyncio
-import random
 from functools import partial
 from lxml.html import fromstring
 from concurrent.futures import ProcessPoolExecutor

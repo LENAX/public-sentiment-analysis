@@ -58,17 +58,25 @@ class ParseDriver(object):
         # either the attribute is in element's attribute dict, or
         # it is one of the element object's field
         try:
-            # TODO: refactor this using an {attribute: getter} mapping.
+            # TODO: refactor this crappy code using an {attribute: getter} mapping.
             if (self._get_attribute_failed(attribute_value) and
                 attribute_name == 'text' and hasattr(element, 'text_content')):
                 # special case where we need to get text content from element's children
                 attribute_value = element.text_content()
+                if not self._get_attribute_failed(attribute_value):
+                    return attribute_value
             if self._get_attribute_failed(attribute_value) and hasattr(element, attribute_name):
                 attribute_value = getattr(element, attribute_name)
+                if not self._get_attribute_failed(attribute_value):
+                    return attribute_value
             if self._get_attribute_failed(attribute_value) and hasattr(element, 'get'):
                 attribute_value = element.get(attribute_name)
+                if not self._get_attribute_failed(attribute_value):
+                    return attribute_value
             if self._get_attribute_failed(attribute_value) and hasattr(element, 'attrib'):
                 attribute_value = element.attrib[attribute_name]
+                if not self._get_attribute_failed(attribute_value):
+                    return attribute_value
             if (self._get_attribute_failed(attribute_value) and
                 hasattr(element, 'attrs') and
                 element.attrs and attribute_name in element.attrs):

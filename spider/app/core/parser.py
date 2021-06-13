@@ -216,5 +216,5 @@ if __name__ == "__main__":
                                             ])
         print(parse_result)
 
-    test_to_run = test_flexible_parse
+    test_to_run = test_link_parsing
     test_to_run()
