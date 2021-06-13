@@ -6,7 +6,7 @@ from asyncio import TimeoutError
 
 class BaseSpider(ABC):
 
-    def fetch(self, request: Any) -> Any:
+    def fetch(self, url: str, params: dict = {}):
         return NotImplemented
 
 
@@ -39,9 +39,9 @@ class Spider(BaseSpider):
         else:
             return f"<Spider request_status={self._request_status}>"
 
-    async def fetch(self, url: str, url_params: dict={}) -> str:
+    async def fetch(self, url: str, params: dict={}) -> str:
         try:
-            async with self._request_client.get(url, params=url_params) as response:
+            async with self._request_client.get(url, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(response.status)
                 self._result = await response.text()
 
