@@ -221,8 +221,7 @@ if __name__ == "__main__":
     async def test_bfs_crawl():
 
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36',
-            "Connection": "close"
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'
         }
         start_url = 'http://www.tianqihoubao.com/'
         url_queue, page_queue = Queue(), Queue()
