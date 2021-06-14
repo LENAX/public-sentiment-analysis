@@ -6,5 +6,6 @@ from .data_models import (
     URL,
     RequestHeader,
     ParseRule,
-    ParseResult
+    ParseResult,
+    CrawlResult
 )

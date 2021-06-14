@@ -91,8 +91,8 @@ class ParseRule(BaseModel):
     """ Defines the parse rule for a parser
 
     Fields:
-        field_name: str
-        rule: str
+        field_name: str,
+        rule: str,
         rule_type: ParseRuleType        
     """
     field_name: Optional[str]
@@ -104,7 +104,7 @@ class ParseResult(BaseModel):
     """ Defines the parse result from a parser
     
     Fields:
-        field_name: str
+        field_name: str,
         field_value: str  
     """
     name: str
@@ -112,3 +112,34 @@ class ParseResult(BaseModel):
 
     def __hash__(self):
         return hash(self.__repr__())
+
+
+class CrawlResult(BaseModel):
+    """ Defines a page visited by crawl algorithm
+    
+    Fields:
+        id: int,
+        name: Optional[str],
+        url: str,
+        page_src: str,
+        relative_depth: int,
+        neighbors: List[int] = []
+    """
+    # TODO: implement a graph node like structure
+    id: int
+    name: Optional[str]
+    url: str
+    page_src: str
+    relative_depth: int
+    neighbors: List[int] = []
+
+    def __hash__(self):
+        return hash(self.__repr__())
+
+    def __str__(self):
+        return f"""<CrawlResult id={self.id}" name={self.name} url={self.url} 
+                                page_src={self.page_src[:100]} 
+                                relative_depth={self.relative_depth}
+                                neighbors={self.neighbors}>"""
+
+

@@ -1,9 +1,11 @@
+import re
 from abc import ABC
 from typing import List
 from ..models.data_models import (
     ParseRule, ParseResult, URL, HTMLData
 )
 from .parse_driver import ParseDriver
+from .exceptions import InvalidBaseURLException
 
 
 class BaseParsingStrategy(ABC):
@@ -82,11 +84,37 @@ class LinkParser(BaseParsingStrategy):
         parse_driver_class: Parser Class for low level html string parsing
     """
     
-    def __init__(self, parse_driver_class: ParseDriver):
+    def __init__(self, parse_driver_class: ParseDriver,
+                 link_pattern: re.Pattern=re.compile(
+                 "(\b(https?|ftp|file)://)?[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]"),
+                 base_url: str = None
+    ):
         self._parser = parse_driver_class
+        self._link_pattern = link_pattern
+        self._base_url = base_url
 
     def _valid_link(self, link):
-        return link and len(link) and (link.startswith('http') or link.startswith('/'))
+        return self._link_pattern.match(link)
+
+    @property
+    def link_pattern(self):
+        return self._link_pattern
+
+    @link_pattern.setter
+    def link_pattern(self, link_pattern: re.Pattern):
+        self._link_pattern = link_pattern
+
+    @property
+    def base_url(self):
+        return self._base_url
+
+    @base_url.setter
+    def base_url(self, base_url: re.Pattern):
+        if self._link_pattern.match(base_url):
+            self._base_url = base_url
+        else:
+            raise InvalidBaseURLException("Please provide a valid base url starting with (http|https|ftp)")
+    
 
     def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
         parsed_html = self._parser(text)
@@ -99,8 +127,13 @@ class LinkParser(BaseParsingStrategy):
                         
             for link_url in parsed_html.get_element_attributes(links, ['text', 'href']):
                 if self._valid_link(link_url['href']):
+                    url = link_url['href']
+                    if not url.startswith("http") and self._base_url is not None:
+                        # try to convert relative url to absolute url
+                        url = f"{self._base_url}/{url}"
+
                     parsed_links.add(ParseResult(
-                        name=link_url['text'], value=link_url['href']))
+                        name=link_url['text'], value=url))
 
         return list(parsed_links)
 
@@ -125,17 +158,21 @@ class ParserContext(object):
 
 if __name__ == "__main__":
     import requests
+    import re
 
     # link parsing
     def test_link_parsing():
         page_text = requests.get(
-            "http://www.baidu.com/s?wd=beautifulsoup&rsv_spt=1&rsv_iqid=0xea44a89400010d1e&issp=1&f=8&rsv_bp=1&rsv_idx=2&ie=utf-8&tn=baiduhome_pg&rsv_enter=1&rsv_dl=tb&rsv_sug3=8&rsv_sug1=6&rsv_sug7=100&sug=beautiful&rsv_n=1&rsv_t=56c5exdpUaui0yU6%2BIcYEwvmv%2BQBZAcdY4sqaeNWH6dmK6AyZ4T%2B5zaatRDVRbJ%2BAMeu&rsv_sug2=0&rsv_btype=i&inputT=4656&rsv_sug4=4656").text
-        link_parser = LinkParser(parse_driver_class=ParseDriver)
+            "http://www.tianqihoubao.com/").text
+        # print(page_text)
+        link_parser = LinkParser(
+            parse_driver_class=ParseDriver, base_url='http://www.tianqihoubao.com')
         parsed_links = link_parser.parse(page_text,
                                         rules=[
                                             ParseRule(
+                                                field_name='province',
                                                 rule_type='xpath', 
-                                                rule='//h3/a')
+                                                rule='//tr[3]/td[3]/a')
                                         ])
         print(parsed_links)
         print(len(parsed_links))
@@ -216,5 +253,5 @@ if __name__ == "__main__":
                                             ])
         print(parse_result)
 
-    test_to_run = test_flexible_parse
+    test_to_run = test_link_parsing
     test_to_run()
