@@ -59,17 +59,15 @@ class HTMLData(BaseModel):
     """ Builds a html data representation
 
     Fields:
-        url: URL
+        url: str
         html: str
         create_dt: datetime
         job_id: Optional[str]
         keywords: Optional[List[str]] = []
     """
-    url: URL
+    url: str
     html: str
     create_dt: datetime
-    job_id: Optional[str]
-    keywords: Optional[List[str]] = []
 
 
 class RequestHeader(BaseModel):

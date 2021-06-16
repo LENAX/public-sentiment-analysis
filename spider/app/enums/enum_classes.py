@@ -86,4 +86,5 @@ class JobType(str, Enum):
     """
     BASIC_PAGE_SCRAPING: str = 'basic_page_scraping'
     SEARCH_RESULT_AGGREGATION: str = 'search_result_aggregation'
-    # WEB_CRAWLING: str = 'web_crawling'
+    WEB_CRAWLING: str = 'web_crawling'
+    BAIDU_NEWS_SCRAPING: str = 'baidu_news_scraping'

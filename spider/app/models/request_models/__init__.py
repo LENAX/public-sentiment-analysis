@@ -1,1 +1,1 @@
-from .request_models import JobSpecification, ResultQuery
+from .request_models import JobSpecification, ResultQuery, ScrapeRules

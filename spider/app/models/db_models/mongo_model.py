@@ -1,10 +1,16 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, parse
 from bson import ObjectId
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any, List
 from ...db import AsyncMongoCRUDBase
+from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
+
+
 
 class MongoModel(BaseModel, AsyncMongoCRUDBase):
+
+    __collection__: str = ""
+    __db__: AsyncIOMotorDatabase = None
 
     class Config:
         allow_population_by_field_name = True
@@ -12,6 +18,22 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid),
         }
+
+    @property
+    def collection(cls) -> AsyncIOMotorCollection:
+        return cls.__db__[cls.__collection__]
+
+    @collection.setter
+    def collection(cls, collection_name):
+        cls.__collection__ = collection_name
+
+    @property
+    def db(cls):
+        return cls.__db__
+
+    @db.setter
+    def db(cls, db_client_instance):
+        cls.__db__ = db_client_instance
 
     @classmethod
     def from_mongo(cls, data: dict):
@@ -31,23 +53,40 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
             **kwargs,
         )
 
+        parsed.pop("__collection__", None)
+        parsed.pop("__db__", None)
+
         # Mongo uses `_id` as default key. We should stick to that as well.
         if '_id' not in parsed and 'id' in parsed:
             parsed['_id'] = parsed.pop('id')
 
         return parsed
     
-    @staticmethod
-    async def insert_many(to_collection: Any, data: List[MongoModel], **kwargs):
-        await to_collection.insert_many([d.mongo() for d in data])
-
     @classmethod
-    async def get(cls, collection: Any,  query: Any, **kwargs) -> List[object]:
-        result = [cls.from_mongo(data) async for data in collection.find(query)]
-        return result
-
-    async def save(self, db, collection_name:str):
+    async def insert_many(cls, data: List[BaseModel], **kwargs):
         try:
-            await db[collection_name].insert_one(self.mongo())
+            await cls.__db__[cls.__collection__].insert_many([d.mongo() for d in data])
         except Exception as e:
             print(e)
+
+    @classmethod
+    async def get(cls, query: Any) -> List[object]:
+        try:
+            query_result = await cls.__db__[cls.__collection__].find(query)
+            result = [cls.from_mongo(data) for data in query_result]
+            return result
+        except AttributeError as e:
+            print(e("You must set db instance before getting any data"))
+            return []
+
+    async def save(self):
+        try:
+            result = await self.db[self.__collection__].insert_one(self.mongo())
+            print(result)
+        except Exception as e:
+            print(e)
+
+
+if __name__ == "__main__":
+    general_mongo_model = MongoModel()
+    print(dir(general_mongo_model))
