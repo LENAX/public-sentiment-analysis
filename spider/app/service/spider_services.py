@@ -5,6 +5,7 @@ from aiohttp import ClientSession
 from datetime import datetime
 from typing import List, Any, Tuple, Callable, TypeVar
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from concurrent.futures import ProcessPoolExecutor
 from .base_services import BaseSpiderService, BaseServiceFactory
 from ..models.data_models import (
     RequestHeader,
@@ -26,6 +27,8 @@ Catalog
 """
 
 SemaphoreClass = TypeVar("SemaphoreClass")
+EventLoop = TypeVar("EventLoop")
+ProcessPoolExecutorClass = TypeVar("ProcessPoolExecutorClass")
 
 class HTMLSpiderService(BaseSpiderService):
 
@@ -94,13 +97,17 @@ class SearchResultSpider(BaseSpiderService):
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
                  html_data_model: HTMLData,
-                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID)
+                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
+                 semaphore_cls: SemaphoreClass = asyncio.Semaphore,
+                 coroutine_runner: Callable = asyncio.gather
                 ) -> None:
         self._session = session
         self._spider = spider
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
+        self._semaphore_class = semaphore_cls
+        self._coroutine_runner = coroutine_runner
 
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Crawl search results """
@@ -123,7 +130,11 @@ class BaiduNewsSpider(BaseSpiderService):
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
                  html_data_model: HTMLData,
-                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID)
+                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
+                 semaphore_cls: SemaphoreClass = asyncio.Semaphore,
+                 coroutine_runner: Callable = asyncio.gather,
+                 event_loop_getter: Callable = asyncio.get_event_loop,
+                 process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor
                  ) -> None:
         self._session = session
         self._spider_cls = spider_cls
@@ -131,6 +142,10 @@ class BaiduNewsSpider(BaseSpiderService):
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
+        self._semaphore_class = semaphore_cls
+        self._coroutine_runner = coroutine_runner
+        self._event_loop_getter = event_loop_getter
+        self._process_pool_executor = process_pool_executor
 
     async def _throttled_fetch(self, spider, semaphore) -> Tuple[str, str]:
         async with semaphore:
@@ -172,6 +187,9 @@ class BaiduNewsSpider(BaseSpiderService):
 
         # parse links for search results
         # boost parallelism with multiprocessing
+        link_parser = self._parse_strategy_factory.create('link_parser')
+        event_loop = self._event_loop_getter()
+
 
 
 

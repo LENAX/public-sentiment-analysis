@@ -216,8 +216,8 @@ class ParserContextFactory(object):
 
     @classmethod
     def create(cls, parser_name: str) -> ParserContext:
-        parser = cls.__parser_classes__.get(parser_name, cls.__default_parser__)(cls.__default_parser__)
-        return cls.__parser_context__(parser)
+        parser_cls = cls.__parser_classes__.get(parser_name, cls.__default_parser__)(cls.__default_parser__)
+        return cls.__parser_context__(parser_cls(cls.__parser_driver__))
 
 
 
