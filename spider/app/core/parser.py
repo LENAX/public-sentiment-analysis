@@ -1,6 +1,6 @@
 import re
 from abc import ABC
-from typing import List
+from typing import List, Callable
 from ..models.data_models import (
     ParseRule, ParseResult, URL, HTMLData
 )
@@ -138,6 +138,46 @@ class LinkParser(BaseParsingStrategy):
         return list(parsed_links)
 
 
+class DatetimeParser(BaseParsingStrategy):
+    
+    def __init__(self, parse_driver_class: ParseDriver):
+        self._parser = parse_driver_class
+
+    def parse(self, text: str, rules: List[ParseRule],
+              datetime_formatter: Callable = None) -> List[ParseResult]:
+        """ Parses datetime from webpages 
+
+        Allow processing datetime text using a datetime formatter.
+        If the datetime text is not in a standard format, like "3 days ago",
+        you can write custom logic to convert it to standard format.
+
+        Args:
+            text
+            rules
+            datetime_formatter
+
+        Returns:
+            List[ParseResult]
+        """
+        
+        parsed_html = self._parser(text)
+        parsed_dt = []
+
+        for rule in rules:
+            # match all datetime using provided rules
+            datetimes = parsed_html.select_elements_by(
+                selector_type=rule.rule_type, selector_expression=rule.rule)
+
+            for datetime_element in parsed_html.get_element_attributes(datetimes, ['text']):
+                if datetime_element and len(datetime_element):
+                    datetime_text = datetime_element['text']
+                    if datetime_formatter:
+                        datetime_text = datetime_formatter(datetime_text)
+                    parsed_dt.add(ParseResult(name=rule.field_name, value=datetime_text))
+
+        return parsed_dt
+
+
 class ParserContext(object):
 
     def __init__(self, parsing_strategy: BaseParsingStrategy):
@@ -153,6 +193,32 @@ class ParserContext(object):
 
     def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
         return self._parsing_strategy.parse(text, rules)
+
+
+class ParserContextFactory(object):
+    __parser_classes__ = {
+        'general_parser': HTMLContentParser,
+        'link_parser': LinkParser,
+        'datetime_parser': DatetimeParser
+    }
+    __default_parser_cls__ = HTMLContentParser
+    __parser_driver__ = ParseDriver
+    __parser_context__ = ParserContext
+    
+
+    @property
+    def parser_classes(cls):
+        return list(cls.__parser_classes__.keys())
+
+    @property
+    def parser_driver(cls):
+        return cls.__parser_driver__
+
+    @classmethod
+    def create(cls, parser_name: str) -> ParserContext:
+        parser = cls.__parser_classes__.get(parser_name, cls.__default_parser__)(cls.__default_parser__)
+        return cls.__parser_context__(parser)
+
 
 
 

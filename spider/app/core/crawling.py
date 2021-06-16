@@ -23,9 +23,10 @@ class BaseCrawlingStrategy(ABC):
 
 
 class CrawlerContext(object):
+    """ Holds Crawling strategy classes and allow dynamic selection of crawling strategies """
 
-    def __init__(self, crawling_strategy: BaseCrawlingStrategy):
-        self._crawling_strategy = crawling_strategy
+    def __init__(self, crawling_strategy_cls: BaseCrawlingStrategy, **kwargs):
+        self._crawling_strategy = crawling_strategy_cls(**kwargs)
 
     @property
     def crawling_strategy(self) -> BaseCrawlingStrategy:
@@ -72,7 +73,7 @@ class BFSCrawling(BaseCrawlingStrategy):
         self._spider = new_spider
 
     async def _visit(self, url, depth, path, neighbor_id=None):
-        result = await self._spider.fetch(url)
+        _, result = await self._spider.fetch(url)
         node = CrawlResult(
             id=hash(url),
             url=url,
@@ -235,14 +236,14 @@ if __name__ == "__main__":
         
         async with semaphore, aiohttp.ClientSession(headers=headers) as client_session:
             spider = Spider(request_client=client_session)
-            crawler_context = CrawlerContext(crawling_strategy=BFSCrawling(
+            crawler_context = CrawlerContext(crawling_strategy_cls=BFSCrawling,
                                             spider=spider,
                                             parser=LinkParser(
                                                 parse_driver_class=ParseDriver,
                                                 base_url=start_url),
                                             start_url=start_url,
                                             url_queue=url_queue,
-                                            web_page_queue=page_queue))
+                                            web_page_queue=page_queue)
             
             
             result = await crawler_context.crawl(

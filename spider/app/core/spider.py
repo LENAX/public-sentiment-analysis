@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Any, List
+from typing import Any, List, Tuple, TypeVar
 from .request_client import RequestClient
 from ..enums import RequestStatus
 from asyncio import TimeoutError
@@ -17,12 +17,15 @@ class BaseSpider(ABC):
     def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
         return NotImplemented
 
+Spider = TypeVar("Spider")
 
 class Spider(BaseSpider):
+    """ Core Spider Class for fetching web pages """
 
-    def __init__(self, request_client: RequestClient):
+    def __init__(self, request_client: RequestClient, url_to_request: str = ""):
         self._request_client = request_client
         self._request_status = None
+        self._url = url_to_request
         self._result = ""
 
     @property
@@ -41,22 +44,41 @@ class Spider(BaseSpider):
     def request_status(self, value):
         self._request_status = value
 
+    @classmethod
+    def create_from_urls(cls, urls: List[str], request_client: RequestClient) -> List[Spider]:
+        return [cls(request_client, url) for url in urls]
+
     def __repr__(self):
         if len(self._result):
             return f"<Spider request_status={self._request_status} result={self._result[:30]}>"
         else:
             return f"<Spider request_status={self._request_status}>"
 
-    async def fetch(self, url: str, params: dict={}) -> str:
+    async def fetch(self, url: str = "", params: dict={}) -> Tuple[str, str]:
+        """ Fetch a web page
+
+        Args:
+            url: str
+            params: dict, Additional parameters to pass to request
+
+        Returns:
+            url
+            result
+        """
+        assert len(self._url) > 0 or len(url) > 0
+        url_to_request = url if len(url) > 0 else self._url
+        
         try:
-            async with self._request_client.get(url, params=params) as response:
+            async with self._request_client.get(url_to_request, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(response.status)
                 self._result = await response.text()
 
         except TimeoutError as e:
             self._request_status = RequestStatus.TIMEOUT
+        except Exception as e:
+            self._request_status = RequestStatus.CLIENT_ERROR
 
-        return self._result
+        return url, self._result
 
 
 class WebSpider(BaseSpider):
@@ -93,7 +115,17 @@ class WebSpider(BaseSpider):
         else:
             return f"<Spider request_status={self._request_status}>"
 
-    async def fetch(self, url: str, params: dict = {}) -> str:
+    async def fetch(self, url: str, params: dict = {}) -> Tuple[str, str]:
+        """ Fetch a web page
+
+        Args:
+            url: str
+            params: dict, Additional parameters to pass to request
+
+        Returns:
+            url
+            result
+        """
         try:
             async with self._request_client.get(url, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(
@@ -103,7 +135,7 @@ class WebSpider(BaseSpider):
         except TimeoutError as e:
             self._request_status = RequestStatus.TIMEOUT
 
-        return self._result
+        return url, self._result
 
     async def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
         return self._parser.parse(text, rules)
@@ -154,17 +186,20 @@ if __name__ == "__main__":
 
 
         async with aiohttp.ClientSession(headers=headers, cookies=cookies) as client:
-            spiders = [Spider(request_client=client) for i in range(len(urls))]
-            html_pages = await gather_with_concurrency(10, *[spider.fetch(url) for spider, url in zip(spiders, urls)])
+            spiders = Spider.create_from_urls(urls, client)
+            print(spiders)
+            html_pages = await gather_with_concurrency(2, *[spider.fetch() for spider in spiders])
+            print(html_pages)
         
         return spiders, html_pages
 
-    for MAX_PAGE in range(10, 30, 10):
-        asyncio.sleep(1)
+    for MAX_PAGE in range(10, 20, 10):
+        time.sleep(1)
         print(f"scraping page: {MAX_PAGE}")
         urls = [
-            f"https://www.baidu.com/s?wd=aiohttp&pn=10&oq=aiohttp&tn=baiduhome_pg&ie=utf-8&usm=2&rsv_idx=2&rsv_pq=c21a2e8200000969&rsv_t=1c15pR3lA89tePfSCnFGfYbH62nArYrTq4W%2B1z%2FubD1lIuUVISLRFFhA9lM4M5f2isZs&rsv_page={page}"
+            f"https://www.baidu.com/s?wd=aiohttp&pn={page}"
             for page in range(MAX_PAGE)
         ]
 
         spiders, result = asyncio.run(run_spider(urls, headers, cookies))
+        print(result)
