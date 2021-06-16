@@ -6,10 +6,7 @@ class BaseSpiderService(ABC):
     """ Defines common interface for spider services.
     """
 
-    def get(self, data_src: URL) -> Any:
-        return NotImplemented
-
-    def get_many(self, data_src: List[URL], rules: Any, **kwargs) -> Any:
+    def crawl(self, urls: List[URL], rules: Any, **kwargs) -> Any:
         return NotImplemented
 
 
@@ -33,6 +30,9 @@ class BaseCollectionService(ABC):
 class BaseJobService(ABC):
     """ Provides the common interface for handling spider jobs
     """
+
+    def add(self, job_spec: Any, worker: Any) -> Any:
+        return NotImplemented
 
     def start(self, **kwargs) -> Any:
         return NotImplemented

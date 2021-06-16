@@ -32,13 +32,18 @@ class ScrapeRules(BaseModel):
         size_limit: Optional[SizeLimit]
         time_range: Optional[TimeRange]
         regular_expressions: Optional[RegexPattern]
-        max_retry: Optional[int] = 1  
+        max_retry: Optional[int] = 1
+        max_concurrency: Optional[int] = 50
+        request_params: dict = {}
     """
     keywords: Optional[KeywordRules]
-    size_limit: Optional[SizeLimit]
+    max_pages: Optional[int]
+    max_size: Optional[int]
     time_range: Optional[TimeRange]
-    regular_expressions: Optional[RegexPattern]
+    regular_expressions: Optional[List[str]] = []
     max_retry: Optional[int] = 1
+    max_concurrency: Optional[int] = 50
+    request_params: dict = {}
 
 
 
