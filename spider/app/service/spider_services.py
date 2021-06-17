@@ -34,7 +34,7 @@ class HTMLSpiderService(BaseSpiderService):
 
     def __init__(self, 
                  session: ClientSession,
-                 spider: BaseSpider,
+                 spider_cls: BaseSpider,
                  result_db_model: Result,
                  html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
@@ -42,7 +42,7 @@ class HTMLSpiderService(BaseSpiderService):
                  coroutine_runner: Callable = asyncio.gather
                 ) -> None:
         self._session = session
-        self._spider = spider
+        self._spider_cls = spider_cls
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
@@ -53,6 +53,10 @@ class HTMLSpiderService(BaseSpiderService):
         async with semaphore:
             return await self._spider.fetch(url, params)
 
+    async def _throttled_spider_fetch(self, spider, semaphore) -> Tuple[str, str]:
+        async with semaphore:
+            return await spider.fetch()
+
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Get html data given the data source
 
@@ -61,9 +65,16 @@ class HTMLSpiderService(BaseSpiderService):
             rules: ScrapeRules
         """
         semaphore = self._semaphore_class(rules.max_concurrency)
+        # try create many spiders
+        spiders = self._spider_cls.create_from_urls(urls, self._session)
+        
+        # html_pages = await self._coroutine_runner(
+        #     *[self._throttled_fetch(url, rules.request_params, semaphore)
+        #       for url in urls],
+        #     return_exceptions=True)
         html_pages = await self._coroutine_runner(
-            *[self._throttled_fetch(url, rules.request_params, semaphore)
-              for url in urls],
+            *[self._throttled_spider_fetch(spider, semaphore)
+              for spider in spiders],
             return_exceptions=True)
 
         result_dt = datetime.now()
@@ -248,9 +259,9 @@ if __name__ == "__main__":
         html_model_cls.db = db
 
         async with client_session_cls(headers=headers) as client_session:
-            spider = spider_cls(request_client=client_session)
+            # spider = spider_cls(request_client=client_session)
             spider_service = spider_service_cls(session=client_session,
-                                                spider=spider,
+                                                spider_cls=spider_cls,
                                                 result_db_model=result_model_cls,
                                                 html_data_model=html_model_cls)
             await spider_service.crawl(test_urls, rules)
@@ -267,9 +278,10 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        f"http://www.baidu.com/s?wd=aiohttp&pn={page*10}"
+        f"http://www.baidu.com/s?wd=aiohttp&pn={page}"
         for page in range(0,20,10)
     ]
+    print(urls)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(test_spider_services(
