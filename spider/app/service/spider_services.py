@@ -267,8 +267,8 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        f"https://www.baidu.com/s?wd=aiohttp&pn={page*10}"
-        for page in range(0,50)
+        f"http://www.baidu.com/s?wd=aiohttp&pn={page*10}"
+        for page in range(0,20,10)
     ]
 
     loop = asyncio.get_event_loop()
@@ -282,5 +282,5 @@ if __name__ == "__main__":
         result_model_cls=Result,
         html_model_cls=HTMLData,
         test_urls=urls,
-        rules=ScrapeRules(max_concurrency=5)
+        rules=ScrapeRules(max_concurrency=1)
     ))
