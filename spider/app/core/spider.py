@@ -69,6 +69,7 @@ class Spider(BaseSpider):
         url_to_request = url if len(url) > 0 else self._url
         
         try:
+            # async with self._request_client:
             async with self._request_client.get(url_to_request, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(response.status)
                 self._result = await response.text()
@@ -76,7 +77,9 @@ class Spider(BaseSpider):
         except TimeoutError as e:
             self._request_status = RequestStatus.TIMEOUT
         except Exception as e:
-            self._request_status = RequestStatus.CLIENT_ERROR
+            print(e)
+            raise e
+        #     self._request_status = RequestStatus.CLIENT_ERROR
 
         return url, self._result
 

@@ -1,7 +1,7 @@
 from typing import Optional, List
 from pydantic import BaseModel
 from datetime import date, datetime
-from ...enums import ContentType, JobType
+from ...enums import ContentType, JobType, Parser, ParseRuleType
 
 
 class KeywordRules(BaseModel):
@@ -24,6 +24,25 @@ class RegexPattern(BaseModel):
     patterns: Optional[List[str]] = []
 
 
+class ParseRule(BaseModel):
+    """ Defines the parse rule for a parser
+
+    Fields:
+        field_name: str,
+        rule: str,
+        rule_type: ParseRuleType        
+    """
+    field_name: Optional[str]
+    rule: str
+    rule_type: ParseRuleType
+
+class ParsingPipeline(BaseModel):
+    """ Describes how the parser should parse the webpage
+    """
+    parser: Parser
+    parse_rules: List[ParseRule]
+
+
 class ScrapeRules(BaseModel):
     """ Describes rules a spider should follow
 
@@ -31,7 +50,7 @@ class ScrapeRules(BaseModel):
         keywords: Optional[KeywordRules]
         size_limit: Optional[SizeLimit]
         time_range: Optional[TimeRange]
-        regular_expressions: Optional[RegexPattern]
+        parse_rules: List[ParseRule]
         max_retry: Optional[int] = 1
         max_concurrency: Optional[int] = 50
         request_params: dict = {}
@@ -40,7 +59,7 @@ class ScrapeRules(BaseModel):
     max_pages: Optional[int]
     max_size: Optional[int]
     time_range: Optional[TimeRange]
-    regular_expressions: Optional[List[str]] = []
+    parsing_pipeline: List[ParsingPipeline]
     max_retry: Optional[int] = 1
     max_concurrency: Optional[int] = 50
     request_params: dict = {}

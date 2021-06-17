@@ -3,5 +3,6 @@ from .enum_classes import (
     ContentType,
     JobType,
     RequestStatus,
-    ParseRuleType
+    ParseRuleType,
+    Parser
 )

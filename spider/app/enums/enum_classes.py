@@ -70,6 +70,18 @@ class ParseRuleType(str, Enum):
     TEXT_CONTENT: str = 'text_content'
 
 
+class Parser(str, Enum):
+    """ supported parser types
+
+    One of:
+        HTML_PARSER,
+        LINK_PARSER,
+        DATETIME_PARSER
+    """
+    HTML_PARSER = 'html_parser'
+    LINK_PARSER = 'link_parser'
+    DATETIME_PARSER = 'datetime_parser'
+
 class ContentType(str, Enum):
     WEBPAGE: str = 'webpage'
     IMAGE: str = 'image'
