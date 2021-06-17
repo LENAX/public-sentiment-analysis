@@ -79,7 +79,7 @@ class RequestHeader(BaseModel):
         user_agent: str
         cookie: Union[dict, str]
     """
-    accept: str
+    accept: Optional[str] = ""
     authorization: Optional[str] = ""
     user_agent: str
     cookie: Union[str, dict] = ""

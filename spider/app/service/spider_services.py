@@ -267,7 +267,7 @@ if __name__ == "__main__":
             await spider_service.crawl(test_urls, rules)
 
     headers = RequestHeader(
-        accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
+        # accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
         cookie=""
     )
