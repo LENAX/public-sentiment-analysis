@@ -31,31 +31,34 @@ SemaphoreClass = TypeVar("SemaphoreClass")
 EventLoop = TypeVar("EventLoop")
 ProcessPoolExecutorClass = TypeVar("ProcessPoolExecutorClass")
 
+
 class HTMLSpiderService(BaseSpiderService):
 
-    def __init__(self, 
+    def __init__(self,
                  session: ClientSession,
                  spider_cls: BaseSpider,
-                 parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
                  html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
                  semaphore_cls: SemaphoreClass = asyncio.Semaphore,
                  coroutine_runner: Callable = asyncio.gather
-                ) -> None:
+                 ) -> None:
         self._session = session
-        self._spider = spider_cls
+        self._spider_cls = spider_cls
+        # self._parse_strategy_factory= parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
         self._semaphore_class = semaphore_cls
         self._coroutine_runner = coroutine_runner
-        self._parse_strategy_factory = parse_strategy_factory
 
-    async def _throttled_fetch(self, url, semaphore) -> Tuple[str, str]:
+    async def _throttled_fetch(self, url, params, semaphore) -> Tuple[str, str]:
         async with semaphore:
-            return await self._spider.fetch(url)
+            return await self._spider.fetch(url, params)
 
+    async def _throttled_spider_fetch(self, spider, semaphore) -> Tuple[str, str]:
+        async with semaphore:
+            return await spider.fetch()
 
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Get html data given the data source
@@ -65,15 +68,22 @@ class HTMLSpiderService(BaseSpiderService):
             rules: ScrapeRules
         """
         semaphore = self._semaphore_class(rules.max_concurrency)
-        # spiders = self._spider_cls.create_from_urls(urls, self._session)
-        html_pages = await self._coroutine_runner(
-            *[self._throttled_fetch(url, semaphore)
-              for url in urls],
-            return_exceptions=True)
+        # try create many spiders
+        spiders = self._spider_cls.create_from_urls(urls, self._session)
 
+        # html_pages = await self._coroutine_runner(
+        #     *[self._throttled_fetch(url, rules.request_params, semaphore)
+        #       for url in urls],
+        #     return_exceptions=True)
+        html_pages = await self._coroutine_runner(
+            *[self._throttled_spider_fetch(spider, semaphore)
+              for spider in spiders],
+            return_exceptions=True)
+        print(html_pages)
         result_dt = datetime.now()
         html_data = [
-            self._html_data_model(url=page[0], html=page[1], create_dt=result_dt)
+            self._html_data_model(
+                url=page[0], html=page[1], create_dt=result_dt)
             for page in html_pages
         ]
         result_name = f"result_{result_dt}"
@@ -388,15 +398,16 @@ if __name__ == "__main__":
         html_model_cls.db = db
 
         async with client_session_cls(headers=headers) as client_session:
-            spider = spider_cls(request_client=client_session)
+            # spider = spider_cls(request_client=client_session)
             spider_service = spider_service_cls(session=client_session,
-                                                spider_cls=spider,
-                                                parse_strategy_factory=parse_strategy_factory,
+                                                spider_cls=spider_cls,
+                                                # parse_strategy_factory=None,
                                                 result_db_model=result_model_cls,
                                                 html_data_model=html_model_cls)
             await spider_service.crawl(test_urls, rules)
 
     headers = RequestHeader(
+        accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
         cookie=""
     )
