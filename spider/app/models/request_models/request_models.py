@@ -38,6 +38,10 @@ class ParseRule(BaseModel):
 
 class ParsingPipeline(BaseModel):
     """ Describes how the parser should parse the webpage
+    
+    Fields:
+        parser: Parser
+        parse_rules: List[ParseRule]
     """
     parser: Parser
     parse_rules: List[ParseRule]

@@ -37,6 +37,7 @@ class HTMLSpiderService(BaseSpiderService):
     def __init__(self,
                  session: ClientSession,
                  spider_cls: BaseSpider,
+                 parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
                  html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
@@ -45,20 +46,22 @@ class HTMLSpiderService(BaseSpiderService):
                  ) -> None:
         self._session = session
         self._spider_cls = spider_cls
-        # self._parse_strategy_factory= parse_strategy_factory
+        self._parse_strategy_factory= parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
         self._semaphore_class = semaphore_cls
         self._coroutine_runner = coroutine_runner
 
-    async def _throttled_fetch(self, url, params, semaphore) -> Tuple[str, str]:
-        async with semaphore:
-            return await self._spider.fetch(url, params)
 
-    async def _throttled_spider_fetch(self, spider, semaphore) -> Tuple[str, str]:
-        async with semaphore:
-            return await spider.fetch()
+    async def _throttled_fetch(self, n, *tasks):
+        semaphore = asyncio.Semaphore(n)
+
+        async def sem_task(task):
+            async with semaphore:
+                return await task
+        return await self._coroutine_runner(
+            *(sem_task(task) for task in tasks), return_exceptions=True)
 
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Get html data given the data source
@@ -67,19 +70,12 @@ class HTMLSpiderService(BaseSpiderService):
             data_src: List[str]
             rules: ScrapeRules
         """
-        semaphore = self._semaphore_class(rules.max_concurrency)
         # try create many spiders
         spiders = self._spider_cls.create_from_urls(urls, self._session)
 
-        # html_pages = await self._coroutine_runner(
-        #     *[self._throttled_fetch(url, rules.request_params, semaphore)
-        #       for url in urls],
-        #     return_exceptions=True)
-        html_pages = await self._coroutine_runner(
-            *[self._throttled_spider_fetch(spider, semaphore)
-              for spider in spiders],
-            return_exceptions=True)
-        print(html_pages)
+        html_pages = await self._throttled_fetch(
+            rules.max_concurrency, *[spider.fetch() for spider in spiders])
+
         result_dt = datetime.now()
         html_data = [
             self._html_data_model(
@@ -163,10 +159,14 @@ class BaiduNewsSpider(BaseSpiderService):
         self._process_pool_executor = process_pool_executor
         self._create_time_string_extractors()
         
+    async def _throttled_fetch(self, max_concurrency: int, *tasks) -> Any:
+        semaphore = asyncio.Semaphore(max_concurrency)
 
-    async def _throttled_fetch(self, spider, semaphore) -> Tuple[str, str]:
-        async with semaphore:
-            return await spider.fetch()
+        async def sem_task(task):
+            async with semaphore:
+                return await task
+        return await self._coroutine_runner(
+                *(sem_task(task) for task in tasks), return_exceptions=True)
 
     def _create_time_string_extractors(self):
         self._cn_time_string_extractors = {
@@ -254,10 +254,8 @@ class BaiduNewsSpider(BaseSpiderService):
 
         # concurrently fetch search results with a concurrency limit
         # TODO: could boost parallelism by running parsers at the same time
-        semaphore = self._semaphore_class(rules.max_concurrency)
-        search_result_pages = await self._coroutine_runner(
-            *[self._throttled_fetch(spider, semaphore) for spider in spiders],
-            return_exceptions=True)
+        search_result_pages = await self._throttled_fetch(
+            rules.max_concurrency, *[spider.fetch() for spider in spiders])
 
         # for now, the pipeline is fixed to the following
         # 1. extract all search result blocks from search result pages (title, href, abstract, date)
@@ -372,7 +370,7 @@ class SpiderFactory(BaseServiceFactory):
 if __name__ == "__main__":
     import asyncio
     from motor.motor_asyncio import AsyncIOMotorClient
-    from ..models.request_models import ScrapeRules
+    from ..models.request_models import ScrapeRules, ParsingPipeline, ParseRule
     from ..core import Spider
 
     def create_client(host: str, username: str,
@@ -401,7 +399,7 @@ if __name__ == "__main__":
             # spider = spider_cls(request_client=client_session)
             spider_service = spider_service_cls(session=client_session,
                                                 spider_cls=spider_cls,
-                                                # parse_strategy_factory=None,
+                                                parse_strategy_factory=parse_strategy_factory,
                                                 result_db_model=result_model_cls,
                                                 html_data_model=html_model_cls)
             await spider_service.crawl(test_urls, rules)
@@ -418,8 +416,8 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        f"https://www.baidu.com/s?wd=aiohttp&pn={page*10}"
-        for page in range(0,20,10)
+        f"http://www.baidu.com/s?wd=aiohttp&pn={page}"
+        for page in range(0,100,10)
     ]
     print(urls)
 
@@ -436,7 +434,20 @@ if __name__ == "__main__":
         html_model_cls=HTMLData,
         test_urls=urls,
         rules=ScrapeRules(
-            parsing_pipeline=[],
-            max_concurrency=1
+            max_concurrency=5,
+            parsing_pipeline=[
+                ParsingPipeline(
+                    parser="html_parser",
+                    parse_rules=[
+                        ParseRule(
+                            field='title',
+                            rule_type='xpath',
+                            rule="//h3/a[not (@class)]"
+                        )
+                    ]
+                )
+            ],
         )
     ))
+
+# (title, href, abstract, date)

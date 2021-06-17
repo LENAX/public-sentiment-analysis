@@ -81,7 +81,7 @@ class Spider(BaseSpider):
             raise e
         #     self._request_status = RequestStatus.CLIENT_ERROR
 
-        return url, self._result
+        return url_to_request, self._result
 
 
 class WebSpider(BaseSpider):
@@ -196,13 +196,13 @@ if __name__ == "__main__":
         
         return spiders, html_pages
 
-    for MAX_PAGE in range(10, 20, 10):
-        time.sleep(1)
-        print(f"scraping page: {MAX_PAGE}")
-        urls = [
-            f"https://www.baidu.com/s?wd=aiohttp&pn={page}"
-            for page in range(MAX_PAGE)
-        ]
+    # for MAX_PAGE in range(10, 10, 10):
+    # time.sleep(1)
+    # print(f"scraping page: {MAX_PAGE}")
+    urls = [
+        f"https://www.baidu.com/s?wd=aiohttp&pn={page}"
+        for page in range(10, 100, 10)
+    ]
 
-        spiders, result = asyncio.run(run_spider(urls, headers, cookies))
-        print(result)
+    spiders, result = asyncio.run(run_spider(urls, headers, cookies))
+    print(result)
