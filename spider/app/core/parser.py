@@ -8,6 +8,7 @@ from .parse_driver import ParseDriver
 from .exceptions import InvalidBaseURLException
 from gne import GeneralNewsExtractor
 from itertools import zip_longest
+import chardet
 
 class BaseParsingStrategy(ABC):
     """ Base strategy for parsing text
@@ -136,7 +137,7 @@ class ListItemParser(BaseParsingStrategy):
             item = {}
             attr_value = ""
             for rule, attr in zip(rules, attrs):
-                if attr:
+                if attr is not None:
                     if rule.is_link:
                         attr_value = attr.get('href')
                     else:
@@ -172,9 +173,18 @@ class GeneralNewsParser(BaseParsingStrategy):
     def __init__(self, parser_driver_class: ParseDriver):
         self._parser = parser_driver_class
 
-    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
+    def _correct_encoding(self, text: str, encoding_detector: Callable) -> None:
+        """ Sometimes text is not encoded in utf-8, so we need to convert it to utf-8 before parsing """
+        encoding = encoding_detector(str.encode(text))
+        converted_text = text
+        if 'encoding' in encoding and encoding['encoding'] != 'utf-8':
+            converted_text = str.encode(text).decode('UTF-8')
+        return converted_text
+
+    def parse(self, text: str, rules: List[ParseRule], encoding_detector: Callable = chardet.detect) -> List[ParseResult]:
         """ Parse general new content and return its title, author, date, and content
         """
+        # text = self._correct_encoding(text, encoding_detector)
         parser = self._parser(text)
         parsed_news = parser.extract(text)
         parsed_content = [ParseResult(name=field_name, value=parsed_news[field_name])
@@ -278,7 +288,7 @@ class DatetimeParser(BaseParsingStrategy):
                     datetime_text = datetime_element['text']
                     if datetime_formatter:
                         datetime_text = datetime_formatter(datetime_text)
-                    parsed_dt.add(ParseResult(name=rule.field_name, value=datetime_text))
+                    parsed_dt.append(ParseResult(name=rule.field_name, value=datetime_text))
 
         return parsed_dt
 

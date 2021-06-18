@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, Any, List
 from ...db import AsyncMongoCRUDBase
 from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
-
+from uuid import UUID
 
 
 class MongoModel(BaseModel, AsyncMongoCRUDBase):
@@ -47,7 +47,13 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
         exclude_unset = kwargs.pop('exclude_unset', True)
         by_alias = kwargs.pop('by_alias', True)
 
-        parsed = self.dict(
+        # parsed = self.dict(
+        #     exclude_unset=exclude_unset,
+        #     by_alias=by_alias,
+        #     **kwargs,
+        # )
+        parsed = self.todict(
+            self,
             exclude_unset=exclude_unset,
             by_alias=by_alias,
             **kwargs,
@@ -61,11 +67,46 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
             parsed['_id'] = parsed.pop('id')
 
         return parsed
+
+    @classmethod
+    def todict(cls, obj, classkey=None, **kwargs):
+        exclude_unset = kwargs.pop('exclude_unset', True)
+        by_alias = kwargs.pop('by_alias', True)
+
+        if isinstance(obj, dict):
+            data = {}
+            for (k, v) in obj.items():
+                data[k] = cls.todict(
+                    v, classkey,
+                    exclude_unset=exclude_unset,
+                    by_alias=by_alias)
+            return data
+        elif type(obj) is UUID:
+            return str(obj)
+        elif hasattr(obj, "_ast"):
+            return cls.todict(obj._ast(),
+                    exclude_unset=exclude_unset,
+                    by_alias=by_alias)
+        elif hasattr(obj, "__dict__"):
+            data = dict([(key, cls.todict(value, classkey,
+                    exclude_unset=exclude_unset,
+                    by_alias=by_alias)) 
+                for key, value in obj.__dict__.items() 
+                if not callable(value) and not key.startswith('_')])
+            if classkey is not None and hasattr(obj, "__class__"):
+                data[classkey] = obj.__class__.__name__
+            return data
+        elif hasattr(obj, "__iter__") and not isinstance(obj, str):
+            return [cls.todict(v, classkey,
+                    exclude_unset=exclude_unset,
+                    by_alias=by_alias) for v in obj]
+        else:
+            return obj
     
     @classmethod
     async def insert_many(cls, data: List[BaseModel], **kwargs):
         try:
-            await cls.__db__[cls.__collection__].insert_many([d.mongo() for d in data])
+            await cls.db[cls.__collection__].insert_many([d.mongo() for d in data])
         except Exception as e:
             print(e)
 

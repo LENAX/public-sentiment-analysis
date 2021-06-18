@@ -26,7 +26,6 @@ Catalog
     - Scrape static web page and return its content
 
 """
-
 SemaphoreClass = TypeVar("SemaphoreClass")
 EventLoop = TypeVar("EventLoop")
 ProcessPoolExecutorClass = TypeVar("ProcessPoolExecutorClass")
@@ -221,6 +220,7 @@ class BaiduNewsSpider(BaseSpiderService):
             if pattern.match(time_str):
                 converted = self._cn_time_string_extractors[pattern](
                     today, time_str)
+                return converted
 
         return converted
     
@@ -262,58 +262,56 @@ class BaiduNewsSpider(BaseSpiderService):
         # for now, the pipeline is fixed to the following
         # 1. extract all search result blocks from search result pages (title, href, abstract, date)
         # step 1 will produce a list of List[ParseResult], and have to assume the order to work correctly
+        # collect search results from parser, which has the form ParseResult(name=item, value={'attribute': ParseResult(name='attribute', value='...')})
         parsed_search_result = []
         search_page_parser = self._parse_strategy_factory.create(
             rules.parsing_pipeline[0].parser)
         for _, raw_page in search_result_pages:
-            parsed_page = {}
-            # TODO: optimize this
-            # group by field names
-            page_fields = search_page_parser.parse(
+            search_results = search_page_parser.parse(
                 raw_page, rules.parsing_pipeline[0].parse_rules)
-            parsed_pages = self._group_fields_by(columns=[
-                rule.field_name for rule in rules.parsing_pipeline[0]
-            ])
-            # standardize datetime
-            if 'date' in parsed_page:
-                parsed_page['date'].value = self._standardize_datetime(
-                    parsed_page['date'].value)
 
-            parsed_search_result.append(parsed_page)
+            # standardize datetime
+            for result in search_results:
+                result_attributes = result.value
+                if 'date' in result_attributes:
+                    result_attributes['date'].value = self._standardize_datetime(
+                        result_attributes['date'].value)
+
+            parsed_search_result.extend(search_results)
         
         # 2. if date is provided, parse date strings and include those pages within date range
         if (len(parsed_search_result) > 0 and rules.time_range):
             if rules.time_range.past_days:
                 last_date = datetime.now() - timedelta(days=rules.time_range.past_days)
                 parsed_search_result = [result for result in parsed_search_result
-                                        if 'date' in result and result['date'].value >= last_date]
+                                        if 'date' in result.value and result.value['date'].value >= last_date]
             elif rules.time_range.date_before and rules.time_range.date_after:
                 parsed_search_result = [result for result in parsed_search_result
-                                        if ('date' in result and 
-                                            rules.time_range.date_after <= result['date'].value < rules.time_range.date_before)]
+                                        if ('date' in result.value and 
+                                            rules.time_range.date_after <= result.value['date'].value < rules.time_range.date_before)]
             elif rules.time_range.date_before:
                 parsed_search_result = [result for result in parsed_search_result
-                                        if ('date' in result and
-                                            rules.time_range.date_after <= result['date'].value)]
+                                        if ('date' in result.value and
+                                            rules.time_range.date_after <= result.value['date'].value)]
             elif rules.time_range.date_before and rules.time_range.date_after:
                 parsed_search_result = [result for result in parsed_search_result
-                                        if ('date' in result and
-                                            result['date'].value < rules.time_range.date_before)]
+                                        if ('date' in result.value and
+                                            result.value['date'].value < rules.time_range.date_before)]
                             
         # 3. if keyword exclude is provided, exclude all pages having those keywords
         if (len(parsed_search_result) > 0 and rules.keywords and rules.keywords.exclude):
             exclude_kws = "|".join(rules.keywords.exclude)
             exclude_patterns = re.compile(f'^((?!{exclude_kws}).)*$')
             parsed_search_result = [result for result in parsed_search_result
-                                    if ('abstract' in result and 
-                                        'title' in result and 
-                                        re.find_iter(exclude_patterns, result['abstract']) and
-                                        re.find_iter(exclude_patterns, result['title']))]
+                                    if ('abstract' in result.value and 
+                                        'title' in result.value and 
+                                        re.finditer(exclude_patterns, result.value['abstract']) and
+                                        re.finditer(exclude_patterns, result.value['title']))]
         
         # 4. fetch remaining pages
         if (len(parsed_search_result) > 0):
-            content_urls = [result['href'].value for result in parsed_search_result]
-            content_spiders = self._spider_cls.create_from_urls(content_urls)
+            content_urls = [result.value['href'].value for result in parsed_search_result]
+            content_spiders = self._spider_cls.create_from_urls(content_urls, self._session)
             content_pages = await self._throttled_fetch(
                 rules.max_concurrency, *[spider.fetch() for spider in content_spiders])
         
@@ -321,10 +319,11 @@ class BaiduNewsSpider(BaseSpiderService):
         content_parser = self._parse_strategy_factory.create(
             rules.parsing_pipeline[1].parser)
         parsed_content_results = []
-        for content_page in content_pages:
+        for content_url, content_page in content_pages:
             parsed_contents = {content.name: content
                                for content in content_parser.parse(
                                content_page, rules.parsing_pipeline[1].parse_rules)}
+            parsed_contents['url'] = content_url
             parsed_content_results.append(parsed_contents)
             
         # 6. finally save results to db
@@ -332,7 +331,7 @@ class BaiduNewsSpider(BaseSpiderService):
         results = [
             self._result_db_model(
                 result_id=self._table_id_generator(result['title'].name),
-                name=result['title'].name,
+                name=result['title'].value,
                 description="",
                 data=result.values(),
                 create_dt=result_dt

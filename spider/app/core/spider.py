@@ -17,7 +17,7 @@ class BaseSpider(ABC):
     def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
         return NotImplemented
 
-Spider = TypeVar("Spider")
+SpiderInstance = TypeVar("SpiderInstance")
 
 class Spider(BaseSpider):
     """ Core Spider Class for fetching web pages """
@@ -45,7 +45,7 @@ class Spider(BaseSpider):
         self._request_status = value
 
     @classmethod
-    def create_from_urls(cls, urls: List[str], request_client: RequestClient) -> List[Spider]:
+    def create_from_urls(cls, urls: List[str], request_client: RequestClient) -> List[SpiderInstance]:
         return [cls(request_client, url) for url in urls]
 
     def __repr__(self):
@@ -67,24 +67,17 @@ class Spider(BaseSpider):
         """
         assert len(self._url) > 0 or len(url) > 0
         url_to_request = url if len(url) > 0 else self._url
-
-        async with self._request_client.get(url_to_request, params=params) as response:
-                self._request_status = RequestStatus.from_status_code(
-                    response.status)
-                self._result = await response.text()
         
-        # try:
-        #     # async with self._request_client:
-        #     async with self._request_client.get(url_to_request, params=params) as response:
-        #         self._request_status = RequestStatus.from_status_code(response.status)
-        #         self._result = await response.text()
+        try:
+            async with self._request_client.get(url_to_request, params=params) as response:
+                self._request_status = RequestStatus.from_status_code(response.status)
+                self._result = await response.text()
 
-        # except TimeoutError as e:
-        #     self._request_status = RequestStatus.TIMEOUT
-        # except Exception as e:
-        #     print(e)
-        #     raise e
-        #     self._request_status = RequestStatus.CLIENT_ERROR
+        except TimeoutError as e:
+            self._request_status = RequestStatus.TIMEOUT
+        except Exception as e:
+            print(e)
+            self._request_status = RequestStatus.CLIENT_ERROR
 
         return url_to_request, self._result
 
