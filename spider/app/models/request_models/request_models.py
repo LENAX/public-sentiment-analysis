@@ -5,6 +5,7 @@ from ...enums import ContentType, JobType, Parser, ParseRuleType
 
 
 class KeywordRules(BaseModel):
+    """ Keywords to include or exclude """
     include: List[str] = []
     exclude: List[str] = []
 
@@ -35,6 +36,7 @@ class ParseRule(BaseModel):
     field_name: Optional[str]
     rule: str
     rule_type: ParseRuleType
+    is_link: bool = False
 
 class ParsingPipeline(BaseModel):
     """ Describes how the parser should parse the webpage

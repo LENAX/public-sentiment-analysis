@@ -223,7 +223,9 @@ class BaiduNewsSpider(BaseSpiderService):
                     today, time_str)
 
         return converted
-                
+    
+    def _group_fields_by(self, columns: List[str]):
+        pass
 
     async def crawl(self, urls: List[str], 
                     rules: ScrapeRules,
@@ -247,7 +249,7 @@ class BaiduNewsSpider(BaseSpiderService):
 
         # generate search page urls given keywords and page limit
         for search_base_url in urls:
-            search_urls = [f"{search_base_url}&wd={kw}&{paging_param}={page_number}"
+            search_urls = [f"{search_base_url}&word={kw}&{paging_param}={page_number}"
                            for page_number in range(rules.max_pages)
                            for kw in rules.keywords.include]
             spiders.extend(self._spider_cls.create_from_urls(search_urls, self._session))
@@ -263,10 +265,15 @@ class BaiduNewsSpider(BaseSpiderService):
         parsed_search_result = []
         search_page_parser = self._parse_strategy_factory.create(
             rules.parsing_pipeline[0].parser)
-        for raw_page in search_result_pages:
-            parsed_page = {page.name: page 
-                           for page in search_page_parser.parse(
-                               raw_page, rules.parsing_pipeline[0].parse_rules)}
+        for _, raw_page in search_result_pages:
+            parsed_page = {}
+            # TODO: optimize this
+            # group by field names
+            page_fields = search_page_parser.parse(
+                raw_page, rules.parsing_pipeline[0].parse_rules)
+            parsed_pages = self._group_fields_by(columns=[
+                rule.field_name for rule in rules.parsing_pipeline[0]
+            ])
             # standardize datetime
             if 'date' in parsed_page:
                 parsed_page['date'].value = self._standardize_datetime(
@@ -307,10 +314,8 @@ class BaiduNewsSpider(BaseSpiderService):
         if (len(parsed_search_result) > 0):
             content_urls = [result['href'].value for result in parsed_search_result]
             content_spiders = self._spider_cls.create_from_urls(content_urls)
-            content_pages = await self._coroutine_runner(
-                *[self._throttled_fetch(spider, semaphore)
-                  for spider in content_spiders],
-                return_exceptions=True)
+            content_pages = await self._throttled_fetch(
+                rules.max_concurrency, *[spider.fetch() for spider in content_spiders])
         
         # 5. use the last pipeline and extract contents. (title, content, url)
         content_parser = self._parse_strategy_factory.create(
@@ -370,7 +375,9 @@ class SpiderFactory(BaseServiceFactory):
 if __name__ == "__main__":
     import asyncio
     from motor.motor_asyncio import AsyncIOMotorClient
-    from ..models.request_models import ScrapeRules, ParsingPipeline, ParseRule
+    from ..models.request_models import (
+        ScrapeRules, ParsingPipeline, ParseRule, KeywordRules, TimeRange
+    )
     from ..core import Spider
 
     def create_client(host: str, username: str,
@@ -383,6 +390,7 @@ if __name__ == "__main__":
     async def test_spider_services(db_client,
                                    db_name,
                                    headers,
+                                   cookies,
                                    client_session_cls,
                                    spider_cls,
                                    parse_strategy_factory,
@@ -395,7 +403,7 @@ if __name__ == "__main__":
         result_model_cls.db = db
         html_model_cls.db = db
 
-        async with client_session_cls(headers=headers) as client_session:
+        async with client_session_cls(headers=headers, cookies=cookies) as client_session:
             # spider = spider_cls(request_client=client_session)
             spider_service = spider_service_cls(session=client_session,
                                                 spider_cls=spider_cls,
@@ -404,21 +412,34 @@ if __name__ == "__main__":
                                                 html_data_model=html_model_cls)
             await spider_service.crawl(test_urls, rules)
 
+    cookie_text = """BIDUPSID=C2730507E1C86942858719FD87A61E58;
+    PSTM=1591763607; BAIDUID=0145D8794827C0813A767D21ADED26B4:FG=1;
+    BDUSS=1jdUJiZUIxc01RfkFTTUtoTXZaSFl1SDlPdEgzeGJGVEhkTDZzZ2ZIZlJSM1ZmSVFBQUFBJCQAAAAAAAAAAAEAAACILlzpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANG6TV~Ruk1fek;
+    __yjs_duid=1_9e0d11606e81d46981d7148cc71a1d391618989521258; BD_UPN=123253; BCLID_BFESS=7682355843953324419; BDSFRCVID_BFESS=D74OJeC6263c72vemTUDrgjXg2-lavcTH6f3bGYZSp4POsT0C6gqEG0PEf8g0KubxY84ogKK3gOTH4PF_2uxOjjg8UtVJeC6EG0Ptf8g0f5;
+    H_BDCLCKID_SF_BFESS=tbu8_IIMtCI3enb6MJ0_-P4DePop3MRZ5mAqoDLbKK0KfR5z3hoMK4-qWMtHe47KbD7naIQDtbonofcbK5OmXnt7D--qKbo43bRTKRLy5KJvfJo9WjAMhP-UyNbMWh37JNRlMKoaMp78jR093JO4y4Ldj4oxJpOJ5JbMonLafD8KbD-wD5LBeP-O5UrjetJyaR3R_KbvWJ5TMC_CDP-bDRK8hJOP0njM2HbMoj6sK4QjShPCb6bDQpFl0p0JQUReQnRm_J3h3l02Vh5Ie-t2ynLV2buOtPRMW20e0h7mWIbmsxA45J7cM4IseboJLfT-0bc4KKJxbnLWeIJIjj6jK4JKDG8ft5OP;
+    """
+    cookie_strings = cookie_text.replace("\n","").replace(" ","").split(";")
+    cookies = {}
+    for cookie_str in cookie_strings:
+        try:
+            key, value = cookie_str.split("=")
+            cookies[key] = value
+        except IndexError:
+            print(cookie_str)
+        except ValueError:
+            print(cookie_str)
+
     headers = RequestHeader(
         accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-        cookie=""
-    )
+        cookie=str(cookies))
     use_db = 'spiderDB'
     db_client = create_client(host='localhost',
                               username='admin',
                               password='root',
                               port=27017,
                               db_name=use_db)
-    urls = [
-        f"http://www.baidu.com/s?wd=aiohttp&pn={page}"
-        for page in range(0,100,10)
-    ]
+    urls = [f"http://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&ie=utf-8"]
     print(urls)
 
     loop = asyncio.get_event_loop()
@@ -426,25 +447,50 @@ if __name__ == "__main__":
         db_client=db_client,
         db_name=use_db,
         headers=headers.dict(),
+        cookies=cookies,
         client_session_cls=ClientSession,
         spider_cls=Spider,
         parse_strategy_factory=ParserContextFactory,
-        spider_service_cls=HTMLSpiderService,
+        spider_service_cls=BaiduNewsSpider,
         result_model_cls=Result,
         html_model_cls=HTMLData,
         test_urls=urls,
         rules=ScrapeRules(
             max_concurrency=5,
+            max_pages=1,
+            keywords=KeywordRules(
+                include=['空间站', '航天']),
+            time_range=TimeRange(past_days=3),
             parsing_pipeline=[
                 ParsingPipeline(
-                    parser="html_parser",
+                    parser="list_item_parser",
                     parse_rules=[
                         ParseRule(
-                            field='title',
+                            field_name='title',
                             rule_type='xpath',
-                            rule="//h3/a[not (@class)]"
+                            rule="//h3/a"
+                        ),
+                        ParseRule(
+                            field_name='href',
+                            rule_type='xpath',
+                            rule="//h3/a",
+                            is_link=True
+                        ),
+                        ParseRule(
+                            field_name='abstract',
+                            rule_type='xpath',
+                            rule="//span[contains(@class, 'c-font-normal') and contains(@class, 'c-color-text')]"
+                        ),
+                        ParseRule(
+                            field_name='date',
+                            rule_type='xpath',
+                            rule="//span[contains(@class, 'c-color-gray2') and contains(@class, 'c-font-normal')]"
                         )
                     ]
+                ),
+                ParsingPipeline(
+                    parser="general_news_parser",
+                    parse_rules=[]
                 )
             ],
         )

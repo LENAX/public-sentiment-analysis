@@ -79,6 +79,8 @@ class Parser(str, Enum):
         DATETIME_PARSER
     """
     HTML_PARSER = 'html_parser'
+    GENERAL_NEWS_PARSER = 'general_news_parser'
+    LIST_ITEM_PARSER = 'list_item_parser'
     LINK_PARSER = 'link_parser'
     DATETIME_PARSER = 'datetime_parser'
 

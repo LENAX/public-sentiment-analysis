@@ -1,12 +1,13 @@
 import re
 from abc import ABC
-from typing import List, Callable
+from typing import List, Callable, Generator, Any
 from ..models.data_models import (
     ParseRule, ParseResult, URL, HTMLData
 )
 from .parse_driver import ParseDriver
 from .exceptions import InvalidBaseURLException
-
+from gne import GeneralNewsExtractor
+from itertools import zip_longest
 
 class BaseParsingStrategy(ABC):
     """ Base strategy for parsing text
@@ -66,14 +67,118 @@ class HTMLContentParser(BaseParsingStrategy):
             contents = parsed_html.select_elements_by(
                 selector_type=rule.rule_type, selector_expression=rule.rule)
             if len(contents) > 0:
-                for content_attributes in parsed_html.get_element_attributes(contents, ['text']):
-                    if self._valid(content_attributes['text']):
+                for content_attributes in parsed_html.get_element_attributes(contents, ['text', 'href']):
+                    if not rule.is_link and self._valid(content_attributes['text']):
                         parsed_content.append(
                             ParseResult(name=rule.field_name, value=content_attributes['text'].strip()))
+                    if rule.is_link and self._valid(content_attributes['href']):
+                        parsed_content.append(
+                            ParseResult(name=rule.field_name, value=content_attributes['href'].strip()))
             else:
                 parsed_content.append(
                     ParseResult(name=rule.field_name, value=''))
 
+        return parsed_content
+
+
+class ListItemParser(BaseParsingStrategy):
+
+    def __init__(self, parse_driver_class: ParseDriver):
+        self._parser = parse_driver_class
+
+    def _valid(self, content):
+        return content and len(content)
+
+    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
+        """ Parse a web page containing a list of items.
+        The rules provided are assumed to be extraction rules of the attributes of an item.
+        For example, a product on a product list contains these attributes:
+        (product_name, manufacturer, price, sales)
+
+        You will provide rules like the following:
+        [ParseRule(
+            field_name='product_name',
+            rule_type='xpath',
+            rule='//tr/td[0]'),
+         ParseRule(
+            field_name='manufacturer',
+            rule_type='xpath',
+            rule='//tr/td[1]'),
+         ParseRule(
+            field_name='price',
+            rule_type='xpath',
+            rule='//tr/td[2]'),
+         ParseRule(
+            field_name='sales',
+            rule_type='xpath',
+            rule="//tr/td[3]")]
+
+        Args:
+            text: HTML string to parse
+            rules: a list of (field_name, rule, rule_type) objects
+
+        Returns:
+            List[ParseResult]: a list of list items grouped by their attributes.
+        """
+
+        parsed_html = self._parser(text)
+        item_attrs = []
+        parsed_content = []
+
+        for rule in rules:
+            # match all links using provided rules
+            list_item_attr = parsed_html.select_element(
+                selector_type=rule.rule_type, selector_expression=rule.rule)
+            item_attrs.append(list_item_attr)
+        
+        
+        for attrs in zip_longest(*item_attrs, fillvalue=None):
+            item = {}
+            attr_value = ""
+            for rule, attr in zip(rules, attrs):
+                if attr:
+                    if rule.is_link:
+                        attr_value = attr.get('href')
+                    else:
+                        # assume that user wants text for now
+                        attr_value = attr.text_content().strip()
+                    item[rule.field_name] = ParseResult(
+                        name=rule.field_name, value=attr_value)
+                else:
+                    item[rule.field_name] = ParseResult(
+                        name=rule.field_name, value="")
+            
+            parsed_content.append(ParseResult(name='item', value=item))
+
+            # if len(contents) > 0:
+            #     for content_attributes in parsed_html.get_element_attributes(contents, ['text', 'href']):
+            #         if not rule.is_link and self._valid(content_attributes['text']):
+            #             parsed_content.append(
+            #                 ParseResult(name=rule.field_name, value=content_attributes['text'].strip()))
+            #         if rule.is_link and self._valid(content_attributes['href']):
+            #             parsed_content.append(
+            #                 ParseResult(name=rule.field_name, value=content_attributes['href'].strip()))
+            # else:
+            #     parsed_content.append(
+            #         ParseResult(name=rule.field_name, value=''))
+
+        return parsed_content
+
+
+class GeneralNewsParser(BaseParsingStrategy):
+    """ Extract general news web pages
+    """
+
+    def __init__(self, parser_driver_class: ParseDriver):
+        self._parser = parser_driver_class
+
+    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
+        """ Parse general new content and return its title, author, date, and content
+        """
+        parser = self._parser(text)
+        parsed_news = parser.extract(text)
+        parsed_content = [ParseResult(name=field_name, value=parsed_news[field_name])
+                          for field_name in parsed_news]
         return parsed_content
 
 
@@ -199,7 +304,9 @@ class ParserContextFactory(object):
     __parser_classes__ = {
         'general_parser': HTMLContentParser,
         'link_parser': LinkParser,
-        'datetime_parser': DatetimeParser
+        'list_item_parser': ListItemParser,
+        'datetime_parser': DatetimeParser,
+        'general_news_parser': GeneralNewsParser
     }
     __default_parser_cls__ = HTMLContentParser
     __parser_driver__ = ParseDriver
@@ -216,8 +323,12 @@ class ParserContextFactory(object):
 
     @classmethod
     def create(cls, parser_name: str) -> ParserContext:
-        parser_cls = cls.__parser_classes__.get(parser_name, cls.__default_parser__)(cls.__default_parser__)
-        return cls.__parser_context__(parser_cls(cls.__parser_driver__))
+        parser_cls = cls.__parser_classes__.get(
+            parser_name, cls.__default_parser_cls__)
+        parser = parser_cls(cls.__parser_driver__)
+        ctx = cls.__parser_context__(
+            parsing_strategy=parser)
+        return ctx
 
 
 
@@ -243,28 +354,69 @@ if __name__ == "__main__":
         print(parsed_links)
         print(len(parsed_links))
 
-    def test_content_parsing():
+    def test_search_page_parsing():
         page_text = requests.get(
-            "https://cuiqingcai.com/1319.html").text
+            "http://www.baidu.com/s?wd=asyncio&pn=10").text
         parser = HTMLContentParser(parse_driver_class=ParseDriver)
         contents = parser.parse(page_text,
                                 rules=[
                                     ParseRule(
                                         field_name='title',
                                         rule_type='xpath',
-                                        rule='//article/header/h1'),
+                                        rule="//h3/a[not (@class)]"
+                                    ),
+                                    ParseRule(
+                                        field_name='link',
+                                        rule_type='xpath',
+                                        rule="//h3/a",
+                                        is_link=True
+                                    ),
+                                    ParseRule(
+                                        field_name='abstract',
+                                        rule_type='xpath',
+                                        rule="//div[contains(@class, 'c-abstract')]"
+                                    ),
                                     ParseRule(
                                         field_name='date',
                                         rule_type='xpath',
-                                        rule='//article/header/div/span[1]/span[3]/a'),
+                                        rule="//span[contains(@class, 'c-color-gray2')]"
+                                    )
+                                ])
+        print(contents)
+        print(len(contents))
+    
+    def test_content_parsing():
+        page_text = requests.get(
+            "https://www.163.com/dy/article/FSFLQV4205318EB9.html").text
+        parser = HTMLContentParser(parse_driver_class=ParseDriver)
+        contents = parser.parse(page_text,
+                                rules=[
+                                    ParseRule(
+                                        field_name='title',
+                                        rule_type='xpath',
+                                        rule="//h1"
+                                    ),
+                                    ParseRule(
+                                        field_name='date',
+                                        rule_type='regex',
+                                        rule="(\d{4}[-|/|.]\d{1,2}[-|/|.]\d{1,2}\s*?[0-1]?[0-9]:[0-5]?[0-9]:[0-5]?[0-9])"
+                                    ),
+                                    ParseRule(
+                                        field_name='date',
+                                        rule_type='regex',
+                                        rule="(\d{4}年\d{1,2}月\d{1,2}日)"
+                                    ),
                                     ParseRule(
                                         field_name='author',
-                                        rule_type='xpath',
-                                        rule='//article/header/div/span[2]/time'),
+                                        rule_type='regex',
+                                        rule="来源[：|:| |丨|/].*"
+                                    ),
+                                    # //div[@class='post']//p
                                     ParseRule(
                                         field_name='content',
                                         rule_type='xpath',
-                                        rule="//article/div"),
+                                        rule="//div[contains(@class, 'post') or contains(@class, 'article')]/p"
+                                    ),
                                 ])
         print(contents)
         print(len(contents))
@@ -319,5 +471,43 @@ if __name__ == "__main__":
                                             ])
         print(parse_result)
 
-    test_to_run = test_content_parsing
+    def test_general_news_parsing():
+        page_text = requests.get(
+            "https://www.163.com/dy/article/FSFLQV4205318EB9.html").text
+        parser_context = ParserContextFactory.create('general_news_parser')
+        parse_results = parser_context.parse(page_text, [])
+        print(parse_results)
+
+    def test_item_parsing():
+        page_text = requests.get(
+            "http://www.baidu.com/s?wd=asyncio&pn=10").text
+        parser = ListItemParser(parse_driver_class=ParseDriver)
+        contents = parser.parse(page_text,
+                                rules=[
+                                    ParseRule(
+                                        field_name='title',
+                                        rule_type='xpath',
+                                        rule="//h3/a[not (@class)]"
+                                    ),
+                                    ParseRule(
+                                        field_name='link',
+                                        rule_type='xpath',
+                                        rule="//h3/a",
+                                        is_link=True
+                                    ),
+                                    ParseRule(
+                                        field_name='abstract',
+                                        rule_type='xpath',
+                                        rule="//div[contains(@class, 'c-abstract')]"
+                                    ),
+                                    ParseRule(
+                                        field_name='date',
+                                        rule_type='xpath',
+                                        rule="//span[contains(@class, 'c-color-gray2')]"
+                                    )
+                                ])
+        print(contents)
+        print(len(contents))
+
+    test_to_run = test_item_parsing
     test_to_run()

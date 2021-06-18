@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel
-from typing import Optional, List, Any, Union, AnyStr
+from typing import Optional, List, Any, Union, AnyStr, Dict
 from datetime import datetime, timedelta
 from ..request_models import (
     JobSpecification
@@ -96,6 +96,7 @@ class ParseRule(BaseModel):
     field_name: Optional[str]
     rule: str
     rule_type: ParseRuleType
+    is_link: Optional[bool] = False
 
 
 class ParseResult(BaseModel):
@@ -106,7 +107,7 @@ class ParseResult(BaseModel):
         field_value: str  
     """
     name: str
-    value: str
+    value: Union[str, List[str], Dict[str, Any]]
 
     def __hash__(self):
         return hash(self.__repr__())

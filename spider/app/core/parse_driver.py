@@ -10,17 +10,18 @@ from lxml import etree
 from lxml.html import fromstring
 from lxml.etree import Element
 from functools import partial
-from typing import Callable, List, Any, Union, Dict
+from typing import Callable, List, Any, Union, Dict, Generator
+from gne import GeneralNewsExtractor
 
-
-class ParseDriver(object):
-    """ Creates a Facade for BeautifulSoup and lxml.
+class ParseDriver(GeneralNewsExtractor):
+    """ Creates a Facade for BeautifulSoup, lxml and GeneralNewsExtractor.
     
     This class will primarily use BeautifulSoup since it is more user-friendly.
     To patch xpath selection functionality, we use lxml under the hood.
     """
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.parsed_text = BeautifulSoup(text, 'lxml')
         self.text = text
         self._initialize_selectors()
@@ -95,17 +96,52 @@ class ParseDriver(object):
         
         return selected_elements
 
-    def get_element_attributes(self, elements: List[Union[Tag, Element]], attribute_names: List[str]) -> List[Dict[str, str]]:
+    def select_element(self,
+                       selector_type: str,
+                       selector_expression: str) -> Generator[str, str, Union[Tag, Element]]:
+        """ Select element given html/xml text, rule and attribute
+
+        Args:
+            text: html/xml text
+            selector_type: one of (xpath, css_selector, regex, class_name, element_id, text_content)
+            selector_expression: an expression of (xpath, css_selector, regex, class_name, element_id, text_content)
+        
+        Returns:
+            Generator[Union[Tag, Element]]
+        """
+        # get an element selector
+        selector = self._get_selector(selector_type, self.parsed_text)
+        # select elements from the element tree
+        for selected_elements in selector(selector_expression):
+            yield selected_elements
+
+    def get_element_attributes(self, 
+                               elements: List[Union[Tag, Element]],
+                               attribute_names: List[str]) -> List[Dict[str, str]]:
         return [{attribute_name: self._get_element_attribute(element, attribute_name) for attribute_name in attribute_names}
                 for element in elements]
 
 
+class GeneralNewsParserDriver(ParseDriver, GeneralNewsExtractor):
+
+     def __init__(self, text: str, *args, **kwargs):
+        ParseDriver.__init__(self, text, *args, **kwargs)
+        GeneralNewsExtractor.__init__(self)
+
+
 if __name__ == "__main__":
     import requests
+    from gne import GeneralNewsExtractor
 
     page_text = requests.get(
-        "http://www.baidu.com/s?wd=beautifulsoup&rsv_spt=1&rsv_iqid=0xea44a89400010d1e&issp=1&f=8&rsv_bp=1&rsv_idx=2&ie=utf-8&tn=baiduhome_pg&rsv_enter=1&rsv_dl=tb&rsv_sug3=8&rsv_sug1=6&rsv_sug7=100&sug=beautiful&rsv_n=1&rsv_t=56c5exdpUaui0yU6%2BIcYEwvmv%2BQBZAcdY4sqaeNWH6dmK6AyZ4T%2B5zaatRDVRbJ%2BAMeu&rsv_sug2=0&rsv_btype=i&inputT=4656&rsv_sug4=4656").text
-    parse_driver = ParseDriver(page_text)
-    links = parse_driver.select_elements_by('xpath', "//h3/a")
-    attributes = parse_driver.get_element_attributes(links, ['text', 'href'])
-    print(attributes)
+        "https://www.163.com/dy/article/FSFLQV4205318EB9.html").text
+    # parse_driver = ParseDriver(page_text)
+    # links = parse_driver.select_elements_by('xpath', "//h3/a")
+    # attributes = parse_driver.get_element_attributes(links, ['text', 'href'])
+    # print(attributes)
+
+    extractor = GeneralNewsExtractor()
+    result = extractor.extract(page_text)
+    print(result)
+
+

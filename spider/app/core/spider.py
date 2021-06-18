@@ -67,18 +67,23 @@ class Spider(BaseSpider):
         """
         assert len(self._url) > 0 or len(url) > 0
         url_to_request = url if len(url) > 0 else self._url
-        
-        try:
-            # async with self._request_client:
-            async with self._request_client.get(url_to_request, params=params) as response:
-                self._request_status = RequestStatus.from_status_code(response.status)
-                self._result = await response.text()
 
-        except TimeoutError as e:
-            self._request_status = RequestStatus.TIMEOUT
-        except Exception as e:
-            print(e)
-            raise e
+        async with self._request_client.get(url_to_request, params=params) as response:
+                self._request_status = RequestStatus.from_status_code(
+                    response.status)
+                self._result = await response.text()
+        
+        # try:
+        #     # async with self._request_client:
+        #     async with self._request_client.get(url_to_request, params=params) as response:
+        #         self._request_status = RequestStatus.from_status_code(response.status)
+        #         self._result = await response.text()
+
+        # except TimeoutError as e:
+        #     self._request_status = RequestStatus.TIMEOUT
+        # except Exception as e:
+        #     print(e)
+        #     raise e
         #     self._request_status = RequestStatus.CLIENT_ERROR
 
         return url_to_request, self._result
@@ -152,7 +157,22 @@ if __name__ == "__main__":
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'
     }
-    cookies = {'cookies_are': 'working'}
+    cookie_text = """BIDUPSID=C2730507E1C86942858719FD87A61E58;
+    PSTM=1591763607; BAIDUID=0145D8794827C0813A767D21ADED26B4:FG=1;
+    BDUSS=1jdUJiZUIxc01RfkFTTUtoTXZaSFl1SDlPdEgzeGJGVEhkTDZzZ2ZIZlJSM1ZmSVFBQUFBJCQAAAAAAAAAAAEAAACILlzpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANG6TV~Ruk1fek;
+    __yjs_duid=1_9e0d11606e81d46981d7148cc71a1d391618989521258; BD_UPN=123253; BCLID_BFESS=7682355843953324419; BDSFRCVID_BFESS=D74OJeC6263c72vemTUDrgjXg2-lavcTH6f3bGYZSp4POsT0C6gqEG0PEf8g0KubxY84ogKK3gOTH4PF_2uxOjjg8UtVJeC6EG0Ptf8g0f5;
+    H_BDCLCKID_SF_BFESS=tbu8_IIMtCI3enb6MJ0_-P4DePop3MRZ5mAqoDLbKK0KfR5z3hoMK4-qWMtHe47KbD7naIQDtbonofcbK5OmXnt7D--qKbo43bRTKRLy5KJvfJo9WjAMhP-UyNbMWh37JNRlMKoaMp78jR093JO4y4Ldj4oxJpOJ5JbMonLafD8KbD-wD5LBeP-O5UrjetJyaR3R_KbvWJ5TMC_CDP-bDRK8hJOP0njM2HbMoj6sK4QjShPCb6bDQpFl0p0JQUReQnRm_J3h3l02Vh5Ie-t2ynLV2buOtPRMW20e0h7mWIbmsxA45J7cM4IseboJLfT-0bc4KKJxbnLWeIJIjj6jK4JKDG8ft5OP;
+    """
+    cookie_strings = cookie_text.replace("\n", "").replace(" ", "").split(";")
+    cookies = {}
+    for cookie_str in cookie_strings:
+        try:
+            key, value = cookie_str.split("=")
+            cookies[key] = value
+        except IndexError:
+            print(cookie_str)
+        except ValueError:
+            print(cookie_str)
 
     def timeit(func):
         async def process(func, *args, **params):
@@ -199,9 +219,9 @@ if __name__ == "__main__":
     # for MAX_PAGE in range(10, 10, 10):
     # time.sleep(1)
     # print(f"scraping page: {MAX_PAGE}")
+    
     urls = [
-        f"https://www.baidu.com/s?wd=aiohttp&pn={page}"
-        for page in range(10, 100, 10)
+        f"https://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&ie=utf-8&word=%E7%A9%BA%E9%97%B4%E7%AB%99"
     ]
 
     spiders, result = asyncio.run(run_spider(urls, headers, cookies))
