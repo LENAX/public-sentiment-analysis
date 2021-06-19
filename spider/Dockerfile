@@ -7,6 +7,7 @@ RUN mkdir spider
 COPY ./app /opt/spider
 COPY ./requirements.txt /opt/spider
 RUN pip install pip -U
+RUN pip install --ignore-installed pyaml-env
 RUN pip install -r ./spider/requirements.txt
 
 CMD uvicorn spider.app.server:app --host 0.0.0.0

@@ -1,10 +1,10 @@
 from .base import ResponseModel
 from typing import Optional, List, Any
-from ..data_models import JobCreationStatus, JobResult, HTMLData
+from ..data_models import JobStatus, JobResult, HTMLData
 from ..request_models import ResultQuery
 
 class JobCreationResponse(ResponseModel):
-    creation_status: JobCreationStatus
+    creation_status: JobStatus
 
 
 class JobResultResponse(ResponseModel):

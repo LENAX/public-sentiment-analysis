@@ -1,0 +1,28 @@
+base: &base
+  headers:
+    header_accept: ${HEADER_ACCEPT}
+    user_agent: ${USER_AGENT}
+    cookies: ${COOKIES}
+  db:
+    host: ${HOST}
+    username: ${USERNAME}
+    password: ${PASSWORD}
+    port: ${PORT}
+    db_name: ${DB_NAME}
+local_development:
+  headers:
+    header_accept: text/html, application/xhtml+xml, application/xml, image/webp, */*
+    user_agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36
+    cookies: ""
+  db:
+    host: '127.0.0.1'
+    username: root
+    password: Password_#123
+    port: 27017
+    db_name: spiderDB
+development:
+  <<: *base
+test:
+  <<: *base
+production:
+  <<: *base
