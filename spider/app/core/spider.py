@@ -63,14 +63,13 @@ class Spider(BaseSpider):
                 len(common_cn_characters)/len(cn_characters) < 0.8)
     
     def _fix_mojibake(self, byte_str: str, encoding_detector: Callable) -> str:
-        # prioritize utf-8, then gb2312 and gbk
         detect_result = encoding_detector(byte_str)
         fixed_text = ""
         if detect_result['confidence'] >= 0.9:
             fixed_text = byte_str.decode(
                 detect_result['encoding'], errors='replace')
         else:
-            for cn_encoding in ['utf-8', 'gbk', 'gb2312']:
+            for cn_encoding in ['gbk', 'gb2312', 'utf-8']:
                 decoded = byte_str.decode(
                     cn_encoding, errors='replace')
                 if not self._is_mojibake(decoded):
@@ -257,9 +256,10 @@ if __name__ == "__main__":
     # print(f"scraping page: {MAX_PAGE}")
     
     urls = [
-        f"https://new.qq.com/omn/20210618/20210618A08QBO00.html",
-        'http://dy.163.com/article/GCS0NEHD0550AXYG.html',
-        'https://new.qq.com/omn/20210618/20210618V0DUNT00.html'
+        "https://voice.baidu.com/act/newpneumonia/newpneumonia/?from=osari_aladin_banner&city=%E5%B9%BF%E4%B8%9C-%E5%B9%BF%E5%B7%9E",
+        # f"https://new.qq.com/omn/20210618/20210618A08QBO00.html",
+        # 'http://dy.163.com/article/GCS0NEHD0550AXYG.html',
+        # 'https://new.qq.com/omn/20210618/20210618V0DUNT00.html'
     ]
 
     spiders, result = asyncio.run(run_spider(urls, headers, cookies))
