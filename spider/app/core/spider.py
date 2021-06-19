@@ -99,9 +99,10 @@ class Spider(BaseSpider):
             raw_body = b""
             async with self._request_client.get(url_to_request, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(response.status)
-                if self._request_status == RequestStatus.NOT_FOUND:
+                if (self._request_status == RequestStatus.NOT_FOUND or 
+                    self._request_status == RequestStatus.FORBIDDEN ):
                     return url_to_request, self._result
-                    
+
                 html_text = await response.text("utf-8", "ignore")
                 
                 # fix garbled text issue
@@ -111,7 +112,7 @@ class Spider(BaseSpider):
                     raw_body = response._body
                     if raw_body is None:
                         raw_body = await response.read()
-                    self._result = self._fix_mojibake(raw_body)
+                    self._result = self._fix_mojibake(raw_body, encoding_detector)
                     
         except TimeoutError as e:
             self._request_status = RequestStatus.TIMEOUT
