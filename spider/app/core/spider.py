@@ -99,6 +99,9 @@ class Spider(BaseSpider):
             raw_body = b""
             async with self._request_client.get(url_to_request, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(response.status)
+                if self._request_status == RequestStatus.NOT_FOUND:
+                    return url_to_request, self._result
+                    
                 html_text = await response.text("utf-8", "ignore")
                 
                 # fix garbled text issue
