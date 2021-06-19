@@ -134,14 +134,14 @@ if __name__ == "__main__":
     from gne import GeneralNewsExtractor
 
     page_text = requests.get(
-        "https://www.163.com/dy/article/FSFLQV4205318EB9.html").text
+        "https://new.qq.com/omn/20210618/20210618A02OG800.html").text
     # parse_driver = ParseDriver(page_text)
     # links = parse_driver.select_elements_by('xpath', "//h3/a")
     # attributes = parse_driver.get_element_attributes(links, ['text', 'href'])
     # print(attributes)
 
-    extractor = GeneralNewsExtractor()
-    result = extractor.extract(page_text)
+    parse_driver = ParseDriver(page_text)
+    result = parse_driver.extract(page_text)
     print(result)
 
 

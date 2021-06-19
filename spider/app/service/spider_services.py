@@ -320,11 +320,17 @@ class BaiduNewsSpider(BaseSpiderService):
             rules.parsing_pipeline[1].parser)
         parsed_content_results = []
         for content_url, content_page in content_pages:
-            parsed_contents = {content.name: content
-                               for content in content_parser.parse(
-                               content_page, rules.parsing_pipeline[1].parse_rules)}
-            parsed_contents['url'] = content_url
-            parsed_content_results.append(parsed_contents)
+            if len(content_page) == 0:
+                print(f"failed to fetch url: {content_url}")
+            else:
+                parsed_contents = {content.name: content
+                                for content in content_parser.parse(
+                                content_page, rules.parsing_pipeline[1].parse_rules)}
+                
+                if any((len(parse_result.value) > 0
+                      for parse_result in parsed_contents.values())):
+                    parsed_contents['url'] = content_url
+                    parsed_content_results.append(parsed_contents)
             
         # 6. finally save results to db
         result_dt = datetime.now()
@@ -455,11 +461,11 @@ if __name__ == "__main__":
         html_model_cls=HTMLData,
         test_urls=urls,
         rules=ScrapeRules(
-            max_concurrency=5,
-            max_pages=1,
+            max_concurrency=10,
+            max_pages=5,
             keywords=KeywordRules(
-                include=['空间站', '航天']),
-            time_range=TimeRange(past_days=3),
+                include=['深圳疫情', '广州疫情']),
+            time_range=TimeRange(past_days=5),
             parsing_pipeline=[
                 ParsingPipeline(
                     parser="list_item_parser",

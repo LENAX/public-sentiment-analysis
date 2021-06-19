@@ -1,5 +1,7 @@
+import re
+import chardet
 from abc import ABC
-from typing import Any, List, Tuple, TypeVar
+from typing import Any, List, Tuple, TypeVar, Callable
 from .request_client import RequestClient
 from ..enums import RequestStatus
 from asyncio import TimeoutError
@@ -54,7 +56,32 @@ class Spider(BaseSpider):
         else:
             return f"<Spider request_status={self._request_status}>"
 
-    async def fetch(self, url: str = "", params: dict={}) -> Tuple[str, str]:
+    def _is_mojibake(self, text: str) -> bool:
+        cn_characters = re.findall("[\u2E80-\uFE4F]+", text)
+        common_cn_characters = re.findall("[\u4e00-\u9fa5]+", text)
+        return (len(cn_characters) == 0 or 
+                len(common_cn_characters)/len(cn_characters) < 0.8)
+    
+    def _fix_mojibake(self, byte_str: str, encoding_detector: Callable) -> str:
+        # prioritize utf-8, then gb2312 and gbk
+        detect_result = encoding_detector(byte_str)
+        fixed_text = ""
+        if detect_result['confidence'] >= 0.9:
+            fixed_text = byte_str.decode(
+                detect_result['encoding'], errors='replace')
+        else:
+            for cn_encoding in ['utf-8', 'gbk', 'gb2312']:
+                decoded = byte_str.decode(
+                    cn_encoding, errors='replace')
+                if not self._is_mojibake(decoded):
+                    fixed_text = decoded
+                    break
+        return fixed_text
+
+    async def fetch(self, 
+                    url: str = "",
+                    params: dict={},
+                    encoding_detector: Callable=chardet.detect) -> Tuple[str, str]:
         """ Fetch a web page
 
         Args:
@@ -69,10 +96,20 @@ class Spider(BaseSpider):
         url_to_request = url if len(url) > 0 else self._url
         
         try:
+            raw_body = b""
             async with self._request_client.get(url_to_request, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(response.status)
-                self._result = await response.text()
-
+                html_text = await response.text("utf-8", "ignore")
+                
+                # fix garbled text issue
+                if not self._is_mojibake(html_text):
+                    self._result = html_text
+                else:
+                    raw_body = response._body
+                    if raw_body is None:
+                        raw_body = await response.read()
+                    self._result = self._fix_mojibake(raw_body)
+                    
         except TimeoutError as e:
             self._request_status = RequestStatus.TIMEOUT
         except Exception as e:
@@ -135,6 +172,8 @@ class WebSpider(BaseSpider):
 
         except TimeoutError as e:
             self._request_status = RequestStatus.TIMEOUT
+        except Exception as e:
+            print(e)
 
         return url, self._result
 
@@ -214,7 +253,9 @@ if __name__ == "__main__":
     # print(f"scraping page: {MAX_PAGE}")
     
     urls = [
-        f"https://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&ie=utf-8&word=%E7%A9%BA%E9%97%B4%E7%AB%99"
+        f"https://new.qq.com/omn/20210618/20210618A08QBO00.html",
+        'http://dy.163.com/article/GCS0NEHD0550AXYG.html',
+        'https://new.qq.com/omn/20210618/20210618V0DUNT00.html'
     ]
 
     spiders, result = asyncio.run(run_spider(urls, headers, cookies))
