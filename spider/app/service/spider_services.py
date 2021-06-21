@@ -2,7 +2,6 @@ import re
 import asyncio
 from uuid import uuid5, NAMESPACE_OID
 from functools import partial
-from aiohttp import ClientSession
 from datetime import datetime, timedelta
 from typing import List, Any, Tuple, Callable, TypeVar
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -16,8 +15,11 @@ from ..models.data_models import (
 from ..models.request_models import ScrapeRules
 from ..models.db_models import Result
 from ..enums import JobType
-from ..utils import AsyncIterator
-from ..core import BaseSpider, CrawlerContext, ParserContextFactory
+from ..core import (
+    BaseSpider, CrawlerContext, ParserContextFactory,
+    BaseRequestClient, AsyncBrowserRequestClient, RequestClient
+)
+from ..utils import throttled
 
 """ Defines all spider services
 
@@ -34,33 +36,25 @@ ProcessPoolExecutorClass = TypeVar("ProcessPoolExecutorClass")
 class HTMLSpiderService(BaseSpiderService):
 
     def __init__(self,
-                 session: ClientSession,
-                 spider_cls: BaseSpider,
+                 request_client: BaseRequestClient,
+                 spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
                  html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
-                 semaphore_cls: SemaphoreClass = asyncio.Semaphore,
-                 coroutine_runner: Callable = asyncio.gather
+                 semaphore_class: SemaphoreClass = asyncio.Semaphore,
+                 coroutine_runner: Callable = asyncio.gather,
+                 throttled_fetch: Callable = throttled
                  ) -> None:
-        self._session = session
-        self._spider_cls = spider_cls
+        self._request_client = request_client
+        self._spider_class = spider_class
         self._parse_strategy_factory= parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
-        self._semaphore_class = semaphore_cls
+        self._semaphore_class = semaphore_class
         self._coroutine_runner = coroutine_runner
-
-
-    async def _throttled_fetch(self, n, *tasks):
-        semaphore = asyncio.Semaphore(n)
-
-        async def sem_task(task):
-            async with semaphore:
-                return await task
-        return await self._coroutine_runner(
-            *(sem_task(task) for task in tasks), return_exceptions=True)
+        self._throttled_fetch = throttled_fetch
 
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Get html data given the data source
@@ -70,7 +64,7 @@ class HTMLSpiderService(BaseSpiderService):
             rules: ScrapeRules
         """
         # try create many spiders
-        spiders = self._spider_cls.create_from_urls(urls, self._session)
+        spiders = self._spider_class.create_from_urls(urls, self._request_client)
 
         html_pages = await self._throttled_fetch(
             rules.max_concurrency, *[spider.fetch() for spider in spiders])
@@ -102,22 +96,25 @@ class SearchResultSpider(BaseSpiderService):
     """
 
     def __init__(self,
-                 session: ClientSession,
-                 spider: BaseSpider,
+                 request_client: BaseRequestClient,
+                 spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
                  html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
-                 semaphore_cls: SemaphoreClass = asyncio.Semaphore,
-                 coroutine_runner: Callable = asyncio.gather
+                 semaphore_class: SemaphoreClass = asyncio.Semaphore,
+                 coroutine_runner: Callable = asyncio.gather,
+                 throttled_fetch: Callable = throttled
                 ) -> None:
-        self._session = session
-        self._spider = spider
+        self._request_client = request_client
+        self._spider_class = spider_class
+        self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
-        self._semaphore_class = semaphore_cls
+        self._semaphore_class = semaphore_class
         self._coroutine_runner = coroutine_runner
+        self._throttled_fetch = throttled_fetch
 
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Crawl search results """
@@ -135,37 +132,30 @@ class BaiduNewsSpider(BaseSpiderService):
     """
 
     def __init__(self,
-                 session: ClientSession,
-                 spider_cls: BaseSpider,
+                 request_client: BaseRequestClient,
+                 spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
                  html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
-                 semaphore_cls: SemaphoreClass = asyncio.Semaphore,
+                 semaphore_class: SemaphoreClass = asyncio.Semaphore,
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
-                 process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor
+                 process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
+                 throttled_fetch: Callable = throttled
                  ) -> None:
-        self._session = session
-        self._spider_cls = spider_cls
+        self._request_client = request_client
+        self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
-        self._semaphore_class = semaphore_cls
+        self._semaphore_class = semaphore_class
         self._coroutine_runner = coroutine_runner
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
+        self._throttled_fetch = throttled_fetch
         self._create_time_string_extractors()
-        
-    async def _throttled_fetch(self, max_concurrency: int, *tasks) -> Any:
-        semaphore = asyncio.Semaphore(max_concurrency)
-
-        async def sem_task(task):
-            async with semaphore:
-                return await task
-        return await self._coroutine_runner(
-                *(sem_task(task) for task in tasks), return_exceptions=True)
 
     def _create_time_string_extractors(self):
         self._cn_time_string_extractors = {
@@ -252,7 +242,7 @@ class BaiduNewsSpider(BaseSpiderService):
             search_urls = [f"{search_base_url}&word={kw}&{paging_param}={page_number}"
                            for page_number in range(rules.max_pages)
                            for kw in rules.keywords.include]
-            spiders.extend(self._spider_cls.create_from_urls(search_urls, self._session))
+            spiders.extend(self._spider_class.create_from_urls(search_urls, self._request_client))
 
         # concurrently fetch search results with a concurrency limit
         # TODO: could boost parallelism by running parsers at the same time
@@ -311,7 +301,7 @@ class BaiduNewsSpider(BaseSpiderService):
         # 4. fetch remaining pages
         if (len(parsed_search_result) > 0):
             content_urls = [result.value['href'].value for result in parsed_search_result]
-            content_spiders = self._spider_cls.create_from_urls(content_urls, self._session)
+            content_spiders = self._spider_class.create_from_urls(content_urls, self._request_client)
             content_pages = await self._throttled_fetch(
                 rules.max_concurrency, *[spider.fetch() for spider in content_spiders])
         
@@ -345,14 +335,55 @@ class BaiduNewsSpider(BaseSpiderService):
             for result in parsed_content_results
         ]
         await self._result_db_model.insert_many(results)
+        print("Done!")
 
 
+class BaiduCOVIDSpider(BaseSpiderService):
+    """ A spider for crawling COVID-19 reports from Baidu
+    
+    """
 
+    def __init__(self,
+                 request_client: BaseRequestClient,
+                 spider_class: BaseSpider,
+                 parse_strategy_factory: ParserContextFactory,
+                 result_db_model: Result,
+                 html_data_model: HTMLData,
+                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
+                 semaphore_class: SemaphoreClass = asyncio.Semaphore,
+                 coroutine_runner: Callable = asyncio.gather,
+                 event_loop_getter: Callable = asyncio.get_event_loop,
+                 process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
+                 throttled_fetch: Callable = throttled
+                 ) -> None:
+        self._request_client = request_client
+        self._spider_class = spider_class
+        self._parse_strategy_factory = parse_strategy_factory
+        self._result_db_model = result_db_model
+        self._html_data_model = html_data_model
+        self._table_id_generator = table_id_generator
+        self._semaphore_class = semaphore_class
+        self._coroutine_runner = coroutine_runner
+        self._event_loop_getter = event_loop_getter
+        self._process_pool_executor = process_pool_executor
+        self._throttled_fetch = throttled_fetch
+
+    async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
+        """ Crawl search results within given rules like time range, keywords, and etc.
+        
+        User will provide the search page url of Baidu COVID-19 report 
+        (https://voice.baidu.com/act/newpneumonia/newpneumonia) and areas to view.
+
+        Args:
+            urls: baidu news url
+            rules: rules the spider should follow. This mode expects keywords from users.
+        """
+        pass
 
 
 class WebCrawlingSpider(BaseSpiderService):
 
-    def __init__(self, session: ClientSession, html_data_mapper: Any):
+    def __init__(self, request_client: BaseRequestClient, html_data_mapper: Any):
         pass
 
 
@@ -396,25 +427,25 @@ if __name__ == "__main__":
                                    db_name,
                                    headers,
                                    cookies,
-                                   client_session_cls,
-                                   spider_cls,
+                                   client_session_class,
+                                   spider_class,
                                    parse_strategy_factory,
-                                   spider_service_cls,
-                                   result_model_cls,
-                                   html_model_cls,
+                                   spider_service_class,
+                                   result_model_class,
+                                   html_model_class,
                                    test_urls,
                                    rules):
         db = db_client[db_name]
-        result_model_cls.db = db
-        html_model_cls.db = db
+        result_model_class.db = db
+        html_model_class.db = db
 
-        async with client_session_cls(headers=headers, cookies=cookies) as client_session:
-            # spider = spider_cls(request_client=client_session)
-            spider_service = spider_service_cls(session=client_session,
-                                                spider_cls=spider_cls,
+        async with (await client_session_class(headers=headers, cookies=cookies)) as client_session:
+            # spider = spider_class(request_client=client_session)
+            spider_service = spider_service_class(request_client=client_session,
+                                                spider_class=spider_class,
                                                 parse_strategy_factory=parse_strategy_factory,
-                                                result_db_model=result_model_cls,
-                                                html_data_model=html_model_cls)
+                                                result_db_model=result_model_class,
+                                                html_data_model=html_model_class)
             await spider_service.crawl(test_urls, rules)
 
     cookie_text = """BIDUPSID=C2730507E1C86942858719FD87A61E58;
@@ -444,7 +475,10 @@ if __name__ == "__main__":
                               password='root',
                               port=27017,
                               db_name=use_db)
-    urls = [f"http://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&ie=utf-8"]
+    urls = [
+        f"http://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&ie=utf-8",
+        "https://voice.baidu.com/act/newpneumonia/newpneumonia/?from=osari_aladin_banner&city=%E5%B9%BF%E4%B8%9C-%E5%B9%BF%E5%B7%9E"
+    ]
     print(urls)
 
     loop = asyncio.get_event_loop()
@@ -453,12 +487,12 @@ if __name__ == "__main__":
         db_name=use_db,
         headers=headers.dict(),
         cookies=cookies,
-        client_session_cls=ClientSession,
-        spider_cls=Spider,
+        client_session_class=AsyncBrowserRequestClient,
+        spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
-        spider_service_cls=BaiduNewsSpider,
-        result_model_cls=Result,
-        html_model_cls=HTMLData,
+        spider_service_class=HTMLSpiderService,
+        result_model_class=Result,
+        html_model_class=HTMLData,
         test_urls=urls,
         rules=ScrapeRules(
             max_concurrency=10,

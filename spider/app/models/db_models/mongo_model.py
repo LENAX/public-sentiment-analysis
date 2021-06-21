@@ -123,6 +123,8 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
     async def save(self):
         try:
             result = await self.db[self.__collection__].insert_one(self.mongo())
+            if result:
+                print("Successfully saved 1 record.")
         except Exception as e:
             print(e)
 
