@@ -12,7 +12,7 @@ from ..models.data_models import (
     URL,
     HTMLData,
 )
-from ..models.request_models import ScrapeRules
+from ..models.request_models import ScrapeRules, ParseRule
 from ..models.db_models import Result
 from ..enums import JobType
 from ..core import (
@@ -20,6 +20,7 @@ from ..core import (
     BaseRequestClient, AsyncBrowserRequestClient, RequestClient
 )
 from ..utils import throttled
+from itertools import chain
 
 """ Defines all spider services
 
@@ -367,18 +368,123 @@ class BaiduCOVIDSpider(BaseSpiderService):
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
         self._throttled_fetch = throttled_fetch
+        self._create_report_classifier()
 
-    async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
+    def _required_fields_included(self, 
+                                  rules: List[ParseRule],
+                                  fields_to_include: List[str]):
+        fields_provided = set([rule.field_name for rule in rules])
+        for required_field in fields_to_include:
+            if required_field not in fields_provided:
+                return False
+        
+        return True
+
+    def _create_report_classifier(self, pattern_compiler: Callable = re.compile):
+        self._classifier = {
+            pattern_compiler("#tab4"): 'world',
+            pattern_compiler("国内各地区疫情统计汇总"): 'domestic',
+            pattern_compiler("病死率"): 'foreign_country',
+            pattern_compiler("国外疫情"): 'world',
+            pattern_compiler("市|区"): 'domestic_city',
+        }
+
+    def _classify_report_type(self, url: str, page_text: str):
+        """ Guess report type for page text """
+        for report_pattern in self._classifier:
+            if report_pattern.search(url) or report_pattern.search(page_text):
+                return self._classifier[report_pattern]
+        return 'domestic'
+
+    async def crawl(self, 
+                    urls: List[str],
+                    rules: ScrapeRules,
+                    city_param_pattern: re.Pattern = re.compile("[\u4e00-\u9fa5]{1,}-[\u4e00-\u9fa5]{1,}")
+                    ) -> None:
         """ Crawl search results within given rules like time range, keywords, and etc.
         
         User will provide the search page url of Baidu COVID-19 report 
         (https://voice.baidu.com/act/newpneumonia/newpneumonia) and areas to view.
 
+        City format: (Country|Province)-(Country|City)
+        For example: 美国-美国, 广东-深圳
+        Ill-formatted cities will be ignored.
+
+        The parsed report should at least have the following fields:
+        1. city (if it is empty then it is assumed to be a national report)
+        2. nation
+        3. last_update
+
+        This spider will have 4 pipelines due to different web page structures:
+        1. domestic report pipeline (pipeline_name: domestic)
+        2. domestic_city report pipeline (pipeline_name: domestic_city)
+        3. world report pipeline  (pipeline_name: world)
+        4. foreign countries' reports pipeline (pipeline_name: foreign_country)
+
         Args:
             urls: baidu news url
-            rules: rules the spider should follow. This mode expects keywords from users.
+            rules: 
+                - rules the spider should follow. This mode expects keywords from users.
+                - if keyword is not provided, the spider will return a national report
         """
-        pass
+        # make sure user has provide the covid report url
+        assert len(urls) > 0
+
+        # make sure user has provide at least one parsing pipeline
+        assert len(rules.parsing_pipeline) > 0
+
+        # make sure user has provided the required pipelines
+        assert self._required_fields_included(
+            list(chain(*[rule.parse_rules for rule in rules.parsing_pipeline])),
+            ['domestic_city', 'last_update', 'world', 'domestic', 'foreign_country'])
+        
+        # use the first one as base url and ignore the rest
+        base_url = urls[0]
+        covid_report_urls = [base_url, f"{base_url}#tab4"]
+        
+        # get cities from rules
+        cities = rules.keywords.include
+
+        if len(cities):
+            covid_report_urls += [f"{base_url}?city={city}" 
+                                  for city in cities
+                                  if city_param_pattern.match(city)]
+        
+        # create spiders from urls
+        report_spiders = self._spider_class.create_from_urls(covid_report_urls, self._request_client)
+        
+        # fetch report pages
+        report_pages = await self._throttled_fetch(
+            max_concurrency=rules.max_concurrency,
+            tasks=[spider.fetch() for spider in report_spiders])
+        
+        # create report parser and parse report
+        parsed_reports = []
+        parsing_pipelines = {
+            pipeline.parse_rules[0].field_name: pipeline
+            for pipeline in rules.parsing_pipeline
+        }
+        # create parser by guessing its type
+        for url, raw_page in report_pages:
+            report_type = self._classify_report_type(url, raw_page)
+            pipeline = parsing_pipelines[report_type]
+            parser = self._parse_strategy_factory.create(pipeline.parser)
+            parsed_result = parser.parse(raw_page, rules=pipeline.parse_rules)[0]
+            result_dt = datetime.now()
+            covid_report_summary = self._result_db_model(
+                result_id=self._table_id_generator(
+                    f"COVID-{parsed_result.value[report_type].value}-{parsed_result.value['last_update'].value}"),
+                name=f"{parsed_result.value[report_type].value}实时疫情报告",
+                description="新型冠状病毒肺炎疫情实时大数据报告",
+                data=parsed_result.value.values(),
+                create_dt=result_dt
+            )
+            parsed_reports.append(covid_report_summary)
+
+        # save reports to db
+        print(parsed_reports)
+        await self._result_db_model.insert_many(parsed_reports)
+        print("Done!")
 
 
 class WebCrawlingSpider(BaseSpiderService):
@@ -476,10 +582,213 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        f"http://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&ie=utf-8",
-        "https://voice.baidu.com/act/newpneumonia/newpneumonia/?from=osari_aladin_banner&city=%E5%B9%BF%E4%B8%9C-%E5%B9%BF%E5%B7%9E"
+        "https://voice.baidu.com/act/newpneumonia/newpneumonia"
     ]
     print(urls)
+
+    BAIDU_NEWS_SCAPE_CONFIG = ScrapeRules(
+        max_concurrency=10,
+        max_pages=5,
+        keywords=KeywordRules(
+            include=['深圳疫情', '广州疫情']),
+        time_range=TimeRange(past_days=5),
+        parsing_pipeline=[
+            ParsingPipeline(
+                parser="list_item_parser",
+                parse_rules=[
+                    ParseRule(
+                        field_name='title',
+                        rule_type='xpath',
+                        rule="//h3/a"
+                    ),
+                    ParseRule(
+                        field_name='href',
+                        rule_type='xpath',
+                        rule="//h3/a",
+                        is_link=True
+                    ),
+                    ParseRule(
+                        field_name='abstract',
+                        rule_type='xpath',
+                        rule="//span[contains(@class, 'c-font-normal') and contains(@class, 'c-color-text')]"
+                    ),
+                    ParseRule(
+                        field_name='date',
+                        rule_type='xpath',
+                        rule="//span[contains(@class, 'c-color-gray2') and contains(@class, 'c-font-normal')]"
+                    )
+                ]
+            ),
+            ParsingPipeline(
+                parser="general_news_parser",
+                parse_rules=[]
+            )
+        ],
+    )
+
+    BAIDU_COVID19_CONFIG = ScrapeRules(
+        keywords=KeywordRules(
+            include=['广东-深圳', '广东-广州']),
+        parsing_pipeline=[
+            ParsingPipeline(
+                parser="list_item_parser",
+                parse_rules=[
+                    ParseRule(
+                        field_name='domestic',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[1]/div[1]"
+                    ), ParseRule(
+                        field_name='last_update',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[1]/div[2]/span"
+                    ), ParseRule(
+                        field_name='confirmed_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[2]/div[1]/div[2]"
+                    ), ParseRule(
+                        field_name='new_asymptomatic_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[2]/div[2]/div[2]"
+                    ), ParseRule(
+                        field_name='suspicious_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[2]/div[3]/div[2]"
+                    ), ParseRule(
+                        field_name='serious_symptom_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[2]/div[4]/div[2]"
+                    ), ParseRule(
+                        field_name='total_confirmed_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[3]/div[1]/div[2]"
+                    ), ParseRule(
+                        field_name='imported_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[3]/div[2]/div[2]"
+                    ), ParseRule(
+                        field_name='total_cured',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[3]/div[3]/div[2]"
+                    ), ParseRule(
+                        field_name='total_deaths',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[3]/div[4]/div[2]"
+                    ),
+                ]
+            ), ParsingPipeline(
+                parser="list_item_parser",
+                parse_rules=[
+                    ParseRule(
+                        field_name='world',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-4']/div[1]"
+                    ), ParseRule(
+                        field_name='last_update',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-4']/div[2]/div[1]/span"
+                    ), ParseRule(
+                        field_name='current_confirmed_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[1]/div/div[2]"
+                    ), ParseRule(
+                        field_name='total_cured',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[2]/div/div[2]"
+                    ), ParseRule(
+                        field_name='total_death',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[3]/div/div[2]"
+                    ), ParseRule(
+                        field_name='total_confirmed',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[1]/div/div[2]"
+                    ), ParseRule(
+                        field_name='recovery_rate',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[2]/div/div[2]"
+                    ), ParseRule(
+                        field_name='mortality_rate',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[3]/div/div[2]"
+                    )
+                ]
+            ), ParsingPipeline(
+                parser="list_item_parser",
+                parse_rules=[
+                    ParseRule(
+                        field_name='domestic_city',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[1]"
+                    ), ParseRule(
+                        field_name='last_update',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[2]/span"
+                    ), ParseRule(
+                        field_name='confirmed_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/div/div[1]/div[1]/p[2]"
+                    ), ParseRule(
+                        field_name='domestic_new_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/div/div[1]/div[2]/p[2]"
+                    ), ParseRule(
+                        field_name='new_asymptomatic_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/div/div[1]/div[3]/p[2]"
+                    ), ParseRule(
+                        field_name='total_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/div/div[2]/div[1]/p[2]"
+                    ), ParseRule(
+                        field_name='total_cured',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/div/div[2]/div[2]/p[2]"
+                    ), ParseRule(
+                        field_name='total_deaths',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/div/div[2]/div[3]/p[2]"
+                    ),
+                ]
+            ), ParsingPipeline(
+                parser="list_item_parser",
+                parse_rules=[
+                    ParseRule(
+                        field_name='foreign_country',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[1]"
+                    ), ParseRule(
+                        field_name='last_update',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[1]/div[2]/span"
+                    ), ParseRule(
+                        field_name='confirmed_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[1]/div/div[2]"
+                    ), ParseRule(
+                        field_name='domestic_new_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[2]/div/div[2]"
+                    ), ParseRule(
+                        field_name='new_asymptomatic_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[3]/div/div[2]"
+                    ), ParseRule(
+                        field_name='total_cases',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[1]/div/div[2]"
+                    ), ParseRule(
+                        field_name='total_cured',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[2]/div/div[2]"
+                    ), ParseRule(
+                        field_name='total_deaths',
+                        rule_type='xpath',
+                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[3]/div/div[2]"
+                    ),
+                ]
+            ),
+        ],
+    )
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(test_spider_services(
@@ -490,49 +799,11 @@ if __name__ == "__main__":
         client_session_class=AsyncBrowserRequestClient,
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
-        spider_service_class=HTMLSpiderService,
+        spider_service_class=BaiduCOVIDSpider,
         result_model_class=Result,
         html_model_class=HTMLData,
         test_urls=urls,
-        rules=ScrapeRules(
-            max_concurrency=10,
-            max_pages=5,
-            keywords=KeywordRules(
-                include=['深圳疫情', '广州疫情']),
-            time_range=TimeRange(past_days=5),
-            parsing_pipeline=[
-                ParsingPipeline(
-                    parser="list_item_parser",
-                    parse_rules=[
-                        ParseRule(
-                            field_name='title',
-                            rule_type='xpath',
-                            rule="//h3/a"
-                        ),
-                        ParseRule(
-                            field_name='href',
-                            rule_type='xpath',
-                            rule="//h3/a",
-                            is_link=True
-                        ),
-                        ParseRule(
-                            field_name='abstract',
-                            rule_type='xpath',
-                            rule="//span[contains(@class, 'c-font-normal') and contains(@class, 'c-color-text')]"
-                        ),
-                        ParseRule(
-                            field_name='date',
-                            rule_type='xpath',
-                            rule="//span[contains(@class, 'c-color-gray2') and contains(@class, 'c-font-normal')]"
-                        )
-                    ]
-                ),
-                ParsingPipeline(
-                    parser="general_news_parser",
-                    parse_rules=[]
-                )
-            ],
-        )
+        rules=BAIDU_COVID19_CONFIG
     ))
 
 # (title, href, abstract, date)

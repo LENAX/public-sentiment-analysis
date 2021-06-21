@@ -1,6 +1,9 @@
 import asyncio
+from typing import List, TypeVar
 
-async def throttled(self, max_concurrency: int, *tasks):
+Coroutine = TypeVar("Coroutine")
+
+async def throttled(max_concurrency: int, tasks: List[Coroutine]):
     """ Execute tasks with max concurrency limit
     """
     semaphore = asyncio.Semaphore(max_concurrency)
@@ -9,5 +12,5 @@ async def throttled(self, max_concurrency: int, *tasks):
     async def sem_task(task):
         async with semaphore:
             return await task
-    return await loop.run_until_complete(
-        *(sem_task(task) for task in tasks), return_exceptions=True)
+    return await asyncio.gather(*(sem_task(task) for task in tasks), 
+                                return_exceptions=True)

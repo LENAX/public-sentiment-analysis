@@ -57,7 +57,7 @@ class AsyncBrowserRequestClient(BaseRequestClient):
     async def __init__(self,
                  browser_launcher: Callable = launch,
                  browser_path: str = None,
-                 headless: bool = False,
+                 headless: bool = True,
                  headers: dict = {},
                  cookies: List[dict] = []):
         self._browser = await browser_launcher(

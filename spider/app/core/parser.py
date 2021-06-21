@@ -6,7 +6,6 @@ from ..models.data_models import (
 )
 from .parse_driver import ParseDriver
 from .exceptions import InvalidBaseURLException
-from gne import GeneralNewsExtractor
 from itertools import zip_longest
 import chardet
 
