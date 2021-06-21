@@ -2,7 +2,7 @@ import re
 import chardet
 from abc import ABC
 from typing import Any, List, Tuple, TypeVar, Callable
-from .request_client import RequestClient
+from .request_client import RequestClient, AsyncBrowserRequestClient
 from ..enums import RequestStatus
 from asyncio import TimeoutError
 from .parser import ParserContext
@@ -93,16 +93,16 @@ class Spider(BaseSpider):
         """
         assert len(self._url) > 0 or len(url) > 0
         url_to_request = url if len(url) > 0 else self._url
-        
+
         try:
             raw_body = b""
-            async with self._request_client.get(url_to_request, params=params) as response:
+            async with self._request_client.get(url=url_to_request, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(response.status)
                 if (self._request_status == RequestStatus.NOT_FOUND or 
                     self._request_status == RequestStatus.FORBIDDEN ):
                     return url_to_request, self._result
 
-                html_text = await response.text("utf-8", "ignore")
+                html_text = await response.text(encoding="utf-8", errors="ignore")
                 
                 # fix garbled text issue
                 if not self._is_mojibake(html_text):
@@ -168,7 +168,7 @@ class WebSpider(BaseSpider):
             result
         """
         try:
-            async with self._request_client.get(url, params=params) as response:
+            async with self._request_client.get(url=url, params=params) as response:
                 self._request_status = RequestStatus.from_status_code(
                     response.status)
                 self._result = await response.text()
@@ -188,6 +188,7 @@ if __name__ == "__main__":
     import aiohttp
     import asyncio
     import time
+    from .request_client import RequestClient, AsyncBrowserRequestClient
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'
@@ -242,8 +243,7 @@ if __name__ == "__main__":
                     return await task
             return await asyncio.gather(*(sem_task(task) for task in tasks))
 
-
-        async with aiohttp.ClientSession(headers=headers, cookies=cookies) as client:
+        async with (await AsyncBrowserRequestClient(headers=headers, cookies=cookies)) as client:
             spiders = Spider.create_from_urls(urls, client)
             print(spiders)
             html_pages = await gather_with_concurrency(2, *[spider.fetch() for spider in spiders])
@@ -257,9 +257,9 @@ if __name__ == "__main__":
     
     urls = [
         "https://voice.baidu.com/act/newpneumonia/newpneumonia/?from=osari_aladin_banner&city=%E5%B9%BF%E4%B8%9C-%E5%B9%BF%E5%B7%9E",
-        # f"https://new.qq.com/omn/20210618/20210618A08QBO00.html",
-        # 'http://dy.163.com/article/GCS0NEHD0550AXYG.html',
-        # 'https://new.qq.com/omn/20210618/20210618V0DUNT00.html'
+        f"https://new.qq.com/omn/20210618/20210618A08QBO00.html",
+        'http://dy.163.com/article/GCS0NEHD0550AXYG.html',
+        'https://new.qq.com/omn/20210618/20210618V0DUNT00.html'
     ]
 
     spiders, result = asyncio.run(run_spider(urls, headers, cookies))
