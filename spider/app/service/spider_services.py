@@ -399,7 +399,8 @@ class BaiduCOVIDSpider(BaseSpiderService):
     async def crawl(self, 
                     urls: List[str],
                     rules: ScrapeRules,
-                    city_param_pattern: re.Pattern = re.compile("[\u4e00-\u9fa5]{1,}-[\u4e00-\u9fa5]{1,}")
+                    city_param_pattern: re.Pattern = re.compile("[\u4e00-\u9fa5]{1,}-[\u4e00-\u9fa5]{1,}"),
+                    chain: Callable = chain
                     ) -> None:
         """ Crawl search results within given rules like time range, keywords, and etc.
         
