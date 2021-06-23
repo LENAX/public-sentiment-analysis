@@ -521,20 +521,14 @@ class WeatherSpiderService(BaseSpiderService):
                               re=re,
                               datetime_class: datetime = datetime) -> bool:
             # extract date from url
-            print(re.findall(datetime_pattern, url))
             date_str = re.findall(datetime_pattern, url)
-            print(url, date_str)
             if len(date_str) and len(date_str[0]) == 6:
                 url_date = datetime_class(
                     int(date_str[0][:4]), int(date_str[0][-2:]), 1)
-                print(start_time, url_date, end_time) 
-                print(url_date, (start_time <= url_date <= end_time))
                 return start_time <= url_date <= end_time
             elif len(date_str) and len(date_str[0]) == 8:
                 url_date = datetime_class(
                     int(date_str[0][:4]), int(date_str[0][4:6]), int(date_str[0][-2:]))
-                print(start_time, url_date, end_time)
-                print(url_date, (start_time <= url_date <= end_time))
                 return start_time <= url_date <= end_time
             return False
 
