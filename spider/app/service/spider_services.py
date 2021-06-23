@@ -689,7 +689,10 @@ if __name__ == "__main__":
             config_obj = config_class.parse_obj(parsed_obj)
             return config_obj
 
-
+    def save_config(config, path, dump, dump_class):
+        with open(path, 'w+') as f:
+            config_text = dump(config, Dumper=dump_class)
+            f.write(config_text)
 
     async def test_spider_services(db_client,
                                    db_name,
@@ -816,22 +819,27 @@ if __name__ == "__main__":
             )
         ]
     )
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(test_spider_services(
-        db_client=db_client,
-        db_name=use_db,
-        headers=headers.dict(),
-        cookies=cookies,
-        client_session_class=RequestClient,
-        spider_class=Spider,
-        parse_strategy_factory=ParserContextFactory,
-        crawling_strategy_factory=CrawlerContextFactory,
-        spider_service_class=WeatherSpiderService,
-        result_model_class=Result,
-        html_model_class=HTMLData,
-        test_urls=urls,
-        rules=WEATHER_CONFIG
-    ))
+    save_config(
+        WEATHER_CONFIG,
+        f'{getcwd()}/spider/app/service_configs/weather_config.yml',
+        dump,
+        Dumper
+    )
+    # loop = asyncio.get_event_loop()
+    # loop.run_until_complete(test_spider_services(
+    #     db_client=db_client,
+    #     db_name=use_db,
+    #     headers=headers.dict(),
+    #     cookies=cookies,
+    #     client_session_class=RequestClient,
+    #     spider_class=Spider,
+    #     parse_strategy_factory=ParserContextFactory,
+    #     crawling_strategy_factory=CrawlerContextFactory,
+    #     spider_service_class=WeatherSpiderService,
+    #     result_model_class=Result,
+    #     html_model_class=HTMLData,
+    #     test_urls=urls,
+    #     rules=WEATHER_CONFIG
+    # ))
 
 # (title, href, abstract, date)

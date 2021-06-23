@@ -108,33 +108,24 @@ class BFSCrawling(BaseCrawlingStrategy):
         self._init_queue()
 
     async def _visit(self, url, depth, path, neighbor_id=None):
-        current_time = time.time()
         spider = self._spider_class(
             request_client=self._request_client,
             url_to_request=url
         )
-        print(f"Create spider took {time.time() - current_time} seconds.")
-        current_time = time.time()
         _, result = await spider.fetch()
-        print(f"fetch page took {time.time() - current_time} seconds.")
-        current_time = time.time()
         node = CrawlResult(
             id=hash(url),
             url=url,
             page_src=result,
             relative_depth=depth
         )
-        print(f"construct node took {time.time() - current_time} seconds.")
-        
+
         if neighbor_id:
             node.neighbors.append(neighbor_id)
-        current_time = time.time()
+            
         await self._web_page_queue.put(node)
-        print(f"enqueue node took {time.time() - current_time} seconds.")
-        current_time = time.time()
         self._visited_urls.add(url)
         path.append(node)
-        print(f"book keeping took {time.time() - current_time} seconds.")
 
     def _init_queue(self):
         # assume queue is empty
