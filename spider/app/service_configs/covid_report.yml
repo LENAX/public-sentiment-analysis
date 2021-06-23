@@ -1,0 +1,200 @@
+keywords:
+  exclude: []
+  include:
+  - "\u5E7F\u4E1C-\u6DF1\u5733"
+  - "\u5E7F\u4E1C-\u5E7F\u5DDE"
+max_concurrency: 50
+max_depth: null
+max_pages: null
+max_retry: 1
+max_size: null
+parsing_pipeline:
+- name: null
+  parse_rules:
+  - field_name: domestic
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[1]/div[1]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: last_update
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[1]/div[2]/span
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: confirmed_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[2]/div[1]/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: new_asymptomatic_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[2]/div[2]/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: suspicious_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[2]/div[3]/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: serious_symptom_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[2]/div[4]/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_confirmed_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[3]/div[1]/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: imported_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[3]/div[2]/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_cured
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[3]/div[3]/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_deaths
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[3]/div[4]/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  parser: !!python/object/apply:spider.app.enums.enum_classes.Parser
+  - list_item_parser
+- name: null
+  parse_rules:
+  - field_name: world
+    is_link: false
+    rule: //*[@id='ptab-4']/div[1]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: last_update
+    is_link: false
+    rule: //*[@id='ptab-4']/div[2]/div[1]/span
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: current_confirmed_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[1]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_cured
+    is_link: false
+    rule: //*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[2]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_death
+    is_link: false
+    rule: //*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[3]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_confirmed
+    is_link: false
+    rule: //*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[1]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: recovery_rate
+    is_link: false
+    rule: //*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[2]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: mortality_rate
+    is_link: false
+    rule: //*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[3]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  parser: !!python/object/apply:spider.app.enums.enum_classes.Parser
+  - list_item_parser
+- name: null
+  parse_rules:
+  - field_name: domestic_city
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[1]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: last_update
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[2]/span
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: confirmed_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/div/div[1]/div[1]/p[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: domestic_new_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/div/div[1]/div[2]/p[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: new_asymptomatic_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/div/div[1]/div[3]/p[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/div/div[2]/div[1]/p[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_cured
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/div/div[2]/div[2]/p[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_deaths
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/div/div[2]/div[3]/p[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  parser: !!python/object/apply:spider.app.enums.enum_classes.Parser
+  - list_item_parser
+- name: null
+  parse_rules:
+  - field_name: foreign_country
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[1]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: last_update
+    is_link: false
+    rule: //*[@id='ptab-0']/div[1]/div[2]/span
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: confirmed_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[1]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: domestic_new_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[2]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: new_asymptomatic_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[3]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_cases
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[1]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_cured
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[2]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: total_deaths
+    is_link: false
+    rule: //*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[3]/div/div[2]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  parser: !!python/object/apply:spider.app.enums.enum_classes.Parser
+  - list_item_parser
+request_params: {}
+time_range: null
+url_patterns: null

@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from pydantic import BaseModel
 from datetime import date, datetime
 from ...enums import ContentType, JobType, Parser, ParseRuleType
@@ -17,8 +17,8 @@ class SizeLimit(BaseModel):
 
 class TimeRange(BaseModel):
     past_days: Optional[int]
-    date_before: Optional[date]
-    date_after: Optional[date]
+    start_date: Optional[datetime]
+    end_date: Optional[datetime]
 
 
 class RegexPattern(BaseModel):
@@ -31,20 +31,24 @@ class ParseRule(BaseModel):
     Fields:
         field_name: str,
         rule: str,
-        rule_type: ParseRuleType        
+        rule_type: ParseRuleType   
+        slice_str: Optional[Tuple[int, int]]
     """
     field_name: Optional[str]
     rule: str
     rule_type: ParseRuleType
     is_link: bool = False
+    slice_str: Optional[List[int]]
 
 class ParsingPipeline(BaseModel):
     """ Describes how the parser should parse the webpage
     
     Fields:
+        name: Optional[str]
         parser: Parser
         parse_rules: List[ParseRule]
     """
+    name: Optional[str]
     parser: Parser
     parse_rules: List[ParseRule]
 
@@ -54,9 +58,12 @@ class ScrapeRules(BaseModel):
 
     Fields:
         keywords: Optional[KeywordRules]
-        size_limit: Optional[SizeLimit]
+        max_pages: Optional[int]
+        max_size: Optional[int]
+        max_depth: Optional[int]
         time_range: Optional[TimeRange]
-        parse_rules: List[ParseRule]
+        url_patterns: Optional[List[str]]
+        parsing_pipeline: List[ParsingPipeline]
         max_retry: Optional[int] = 1
         max_concurrency: Optional[int] = 50
         request_params: dict = {}
@@ -64,7 +71,9 @@ class ScrapeRules(BaseModel):
     keywords: Optional[KeywordRules]
     max_pages: Optional[int]
     max_size: Optional[int]
+    max_depth: Optional[int]
     time_range: Optional[TimeRange]
+    url_patterns: Optional[List[str]]
     parsing_pipeline: List[ParsingPipeline]
     max_retry: Optional[int] = 1
     max_concurrency: Optional[int] = 50

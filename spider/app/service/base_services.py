@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from ..models.data_models import URL, DataModel
 from typing import Any, List
 
@@ -6,6 +6,7 @@ class BaseSpiderService(ABC):
     """ Defines common interface for spider services.
     """
 
+    @abstractmethod
     def crawl(self, urls: List[URL], rules: Any, **kwargs) -> Any:
         return NotImplemented
 
@@ -45,8 +46,10 @@ class BaseServiceFactory(ABC):
     """ Provides the common interface for creating services
     """
 
+    @abstractmethod
     def create(self, spec: Any, **kwargs) -> Any:
         return NotImplemented
 
+    @abstractmethod
     def register(self, name: str, product: Any, **kwargs) -> Any:
         return NotImplemented

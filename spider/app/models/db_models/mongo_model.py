@@ -20,20 +20,20 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
         }
 
     @property
-    def collection(cls) -> AsyncIOMotorCollection:
-        return cls.__db__[cls.__collection__]
+    def collection(self) -> AsyncIOMotorCollection:
+        return self.db[self.__collection__]
 
     @collection.setter
-    def collection(cls, collection_name):
-        cls.__collection__ = collection_name
+    def collection(self, collection_name):
+        self.__collection__ = collection_name
 
     @property
-    def db(cls):
-        return cls.__db__
+    def db(self):
+        return self.__db__
 
     @db.setter
-    def db(cls, db_client_instance):
-        cls.__db__ = db_client_instance
+    def db(self, db_client_instance):
+        self.__db__ = db_client_instance
 
     @classmethod
     def from_mongo(cls, data: dict):
@@ -123,6 +123,8 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
     async def save(self):
         try:
             result = await self.db[self.__collection__].insert_one(self.mongo())
+            if result:
+                print("Successfully saved 1 record.")
         except Exception as e:
             print(e)
 
