@@ -645,7 +645,8 @@ class SpiderFactory(BaseServiceFactory):
     __spider_services__ = {
         "basic_page_scraping": HTMLSpiderService,
         "baidu_news_scraping": BaiduNewsSpider,
-        "baidu_covid_report": BaiduCOVIDSpider
+        "baidu_covid_report": BaiduCOVIDSpider,
+        "weather_report": WeatherSpiderService
     }
     
     @classmethod
@@ -689,7 +690,7 @@ if __name__ == "__main__":
             config_obj = config_class.parse_obj(parsed_obj)
             return config_obj
 
-    def save_config(config, path, dump, dump_class):
+    def save_config(config, path, dump: Any = dump, dump_class: Any = Dumper):
         with open(path, 'w+') as f:
             config_text = dump(config, Dumper=dump_class)
             f.write(config_text)
@@ -748,34 +749,35 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        "http://www.tianqihoubao.com/lishi/"
+        "http://www.tianqihoubao.com/aqi/"
     ]
     print(urls)
 
 
-    WEATHER_CONFIG = ScrapeRules(
+    AQI_CONFIG = ScrapeRules(
         keywords=KeywordRules(
-            include=["wuhan", 'huangshi', 'shennongjia']),
-        max_depth=3,
+            include=["shenzhen", 'guangzhou']),
+        max_depth=1,
         max_concurrency=200,
         time_range=TimeRange(
-            start_date=datetime(2021, 5, 1),
-            end_date=datetime(2021, 6, 1)
+            start_date=datetime(2021, 3, 1),
+            end_date=datetime(2021, 4, 1)
         ),
+        url_patterns=['/aqi/\w+-\d{6}.html'],
         parsing_pipeline=[
             ParsingPipeline(
-                name="weather_page_link_finder",
+                name="aqi_link_finder",
                 parser="link_parser",
                 parse_rules=[
                     ParseRule(
                         field_name="city_link",
-                        rule="//*[@id='content']/div[3]/dl[17]/dd/a|//*[@id='content']/div//ul/li/a",
+                        rule="//*[@id='content']/div[2]/dl[17]/dd/a|//*[@id='bd']/div[1]/div[3]/ul/li/a",
                         rule_type="xpath"
                     )
                 ]
             ),
             ParsingPipeline(
-                name="weather_extractor",
+                name="aqi_extractor",
                 parser="list_item_parser",
                 parse_rules=[
                     ParseRule(
@@ -785,7 +787,7 @@ if __name__ == "__main__":
                     ),
                     ParseRule(
                         field_name="province",
-                        rule="//*[@id='mnav']/div[1]/a[2]",
+                        rule="//*[@id='mnav']/div[1]/a[3]",
                         rule_type="xpath",
                         slice_str=(0, 2)
                     ),
@@ -793,53 +795,76 @@ if __name__ == "__main__":
                         field_name="city",
                         rule="//*[@id='content']/h1",
                         rule_type="xpath",
-                        slice_str=(0, 2)
+                        slice_str=(7, 9)
                     ),
                     ParseRule(
                         field_name="date",
-                        rule="//tr/td[1]/a",
+                        rule="//tr/td[1]",
                         rule_type="xpath"
                     ),
                     ParseRule(
-                        field_name="weather",
+                        field_name="quality",
                         rule="//tr/td[2]",
                         rule_type="xpath"
                     ),
                     ParseRule(
-                        field_name="temperature",
+                        field_name="AQI",
                         rule="//tr/td[3]",
                         rule_type="xpath"
                     ),
                     ParseRule(
-                        field_name="wind",
+                        field_name="AQI_rank",
                         rule="//tr/td[4]",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="PM2.5",
+                        rule="//tr/td[5]",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="PM10",
+                        rule="//tr/td[6]",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="SO2",
+                        rule="//tr/td[7]",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="NO2",
+                        rule="//tr/td[8]",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="Co",
+                        rule="//tr/td[9]",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="O3",
+                        rule="//tr/td[10]",
                         rule_type="xpath"
                     )
                 ]
             )
         ]
     )
-    save_config(
-        WEATHER_CONFIG,
-        f'{getcwd()}/spider/app/service_configs/weather_config.yml',
-        dump,
-        Dumper
-    )
-    # loop = asyncio.get_event_loop()
-    # loop.run_until_complete(test_spider_services(
-    #     db_client=db_client,
-    #     db_name=use_db,
-    #     headers=headers.dict(),
-    #     cookies=cookies,
-    #     client_session_class=RequestClient,
-    #     spider_class=Spider,
-    #     parse_strategy_factory=ParserContextFactory,
-    #     crawling_strategy_factory=CrawlerContextFactory,
-    #     spider_service_class=WeatherSpiderService,
-    #     result_model_class=Result,
-    #     html_model_class=HTMLData,
-    #     test_urls=urls,
-    #     rules=WEATHER_CONFIG
-    # ))
-
-# (title, href, abstract, date)
+    
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(test_spider_services(
+        db_client=db_client,
+        db_name=use_db,
+        headers=headers.dict(),
+        cookies=cookies,
+        client_session_class=RequestClient,
+        spider_class=Spider,
+        parse_strategy_factory=ParserContextFactory,
+        crawling_strategy_factory=CrawlerContextFactory,
+        spider_service_class=WeatherSpiderService,
+        result_model_class=Result,
+        html_model_class=HTMLData,
+        test_urls=urls,
+        rules=AQI_CONFIG
+    ))
