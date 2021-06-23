@@ -60,7 +60,7 @@ class Spider(BaseSpider):
         cn_characters = re.findall("[\u2E80-\uFE4F]+", text)
         common_cn_characters = re.findall("[\u4e00-\u9fa5]+", text)
         return (len(cn_characters) == 0 or 
-                len(common_cn_characters)/len(cn_characters) < 0.8)
+                len(common_cn_characters)/len(cn_characters) < 0.99)
     
     def _fix_mojibake(self, byte_str: str, encoding_detector: Callable) -> str:
         detect_result = encoding_detector(byte_str)

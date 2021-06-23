@@ -11,13 +11,15 @@ from ..models.data_models import (
     RequestHeader,
     URL,
     HTMLData,
+    CrawlResult
 )
 from ..models.request_models import ScrapeRules, ParseRule
 from ..models.db_models import Result
 from ..enums import JobType
 from ..core import (
     BaseSpider, CrawlerContext, ParserContextFactory,
-    BaseRequestClient, AsyncBrowserRequestClient, RequestClient
+    BaseRequestClient, AsyncBrowserRequestClient, RequestClient,
+    CrawlerContextFactory
 )
 from ..utils import throttled
 from itertools import chain
@@ -43,17 +45,15 @@ class HTMLSpiderService(BaseSpiderService):
                  result_db_model: Result,
                  html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
-                 semaphore_class: SemaphoreClass = asyncio.Semaphore,
                  coroutine_runner: Callable = asyncio.gather,
-                 throttled_fetch: Callable = throttled
-                 ) -> None:
+                 throttled_fetch: Callable = throttled,
+                 **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory= parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
-        self._semaphore_class = semaphore_class
         self._coroutine_runner = coroutine_runner
         self._throttled_fetch = throttled_fetch
 
@@ -87,41 +87,6 @@ class HTMLSpiderService(BaseSpiderService):
         await crawl_result.save()
 
 
-class SearchResultSpider(BaseSpiderService):
-    """ A general spider for crawling search results. 
-    
-    You can crawl search engine pages with this service if the result page has a paging parameter.
-    Provide the paging parameter and the link result url pattern to crawl raw results.
-    If extraction rules are provided, this service will try to extract information from raw results.
-    
-    """
-
-    def __init__(self,
-                 request_client: BaseRequestClient,
-                 spider_class: BaseSpider,
-                 parse_strategy_factory: ParserContextFactory,
-                 result_db_model: Result,
-                 html_data_model: HTMLData,
-                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
-                 semaphore_class: SemaphoreClass = asyncio.Semaphore,
-                 coroutine_runner: Callable = asyncio.gather,
-                 throttled_fetch: Callable = throttled
-                ) -> None:
-        self._request_client = request_client
-        self._spider_class = spider_class
-        self._parse_strategy_factory = parse_strategy_factory
-        self._result_db_model = result_db_model
-        self._html_data_model = html_data_model
-        self._table_id_generator = table_id_generator
-        self._semaphore_class = semaphore_class
-        self._coroutine_runner = coroutine_runner
-        self._throttled_fetch = throttled_fetch
-
-    async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
-        """ Crawl search results """
-        # TODO: implement this
-        pass
-
 
 class BaiduNewsSpider(BaseSpiderService):
     """ A spider for crawling baidu news
@@ -137,21 +102,17 @@ class BaiduNewsSpider(BaseSpiderService):
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
-                 html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
-                 semaphore_class: SemaphoreClass = asyncio.Semaphore,
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
                  process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
-                 throttled_fetch: Callable = throttled
-                 ) -> None:
+                 throttled_fetch: Callable = throttled,
+                 **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
-        self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
-        self._semaphore_class = semaphore_class
         self._coroutine_runner = coroutine_runner
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
@@ -351,19 +312,17 @@ class BaiduCOVIDSpider(BaseSpiderService):
                  result_db_model: Result,
                  html_data_model: HTMLData,
                  table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
-                 semaphore_class: SemaphoreClass = asyncio.Semaphore,
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
                  process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
-                 throttled_fetch: Callable = throttled
-                 ) -> None:
+                 throttled_fetch: Callable = throttled,
+                 **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
         self._table_id_generator = table_id_generator
-        self._semaphore_class = semaphore_class
         self._coroutine_runner = coroutine_runner
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
@@ -483,33 +442,216 @@ class BaiduCOVIDSpider(BaseSpiderService):
             parsed_reports.append(covid_report_summary)
 
         # save reports to db
-        print(parsed_reports)
         await self._result_db_model.insert_many(parsed_reports)
         print("Done!")
 
 
-class WebCrawlingSpider(BaseSpiderService):
 
-    def __init__(self, request_client: BaseRequestClient, html_data_mapper: Any):
-        pass
+class WeatherSpiderService(BaseSpiderService):
+    """ A spider for crawling historical weather reports
+    
+    """
+
+    def __init__(self,
+                 request_client: BaseRequestClient,
+                 spider_class: BaseSpider,
+                 parse_strategy_factory: ParserContextFactory,
+                 crawling_strategy_factory: CrawlerContextFactory,
+                 result_db_model: Result,
+                 crawl_method: str = 'bfs_crawler',
+                 link_finder: str = 'link_parser',
+                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
+                 coroutine_runner: Callable = asyncio.gather,
+                 event_loop_getter: Callable = asyncio.get_event_loop,
+                 process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
+                 throttled_fetch: Callable = throttled,
+                 **kwargs) -> None:
+        self._request_client = request_client
+        self._spider_class = spider_class
+        self._parse_strategy_factory = parse_strategy_factory
+        self._crawler_context = crawling_strategy_factory.create(
+            crawl_method, spider_class=spider_class,
+            request_client=request_client,
+            start_url='',
+            parser_context=parse_strategy_factory.create(
+                parser_name=link_finder, base_url='')
+        )
+        self._result_db_model = result_db_model
+        self._table_id_generator = table_id_generator
+        self._coroutine_runner = coroutine_runner
+        self._event_loop_getter = event_loop_getter
+        self._process_pool_executor = process_pool_executor
+        self._throttled_fetch = throttled_fetch
+
+    def _required_fields_included(self, 
+                                  rules: List[ParseRule],
+                                  fields_to_include: List[str]):
+        fields_provided = set([rule.field_name for rule in rules])
+        for required_field in fields_to_include:
+            if required_field not in fields_provided:
+                return False
+        
+        return True
+
+    def _get_weather_page_classifier(
+        self,
+        weather_page_url_pattern: re.Pattern = re.compile("\/lishi\/(\w+)\/month\/(\w+).html"),
+        partial: Callable = partial
+    ) -> Callable:
+        def filter_result_by_pattern(node: CrawlResult, pattern: re.Pattern):
+            return len(pattern.findall(node.url)) > 0
+        return partial(filter_result_by_pattern, pattern=weather_page_url_pattern)
+
+    def _get_location_filter(self, 
+                             location_names: List[str],
+                             pattern_compiler: Callable = re.compile,
+                             partial: Callable = partial) -> Callable:
+        def location_filter(url: str, pattern: re.Pattern):
+            return len(pattern.findall(url)) > 0
+        
+        location_pattern = pattern_compiler("|".join(location_names))
+        return partial(location_filter, pattern=location_pattern)
+
+    def _get_time_range_filter(self, start_time: datetime, end_time: datetime,
+                               datetime_class: datetime = datetime,
+                               pattern_compiler: Callable = re.compile,
+                               partial: Callable = partial) -> Callable:
+        def time_range_filter(url: str, start_time: datetime, end_time: datetime,
+                              datetime_pattern: str,
+                              re=re,
+                              datetime_class: datetime = datetime) -> bool:
+            # extract date from url
+            print(re.findall(datetime_pattern, url))
+            date_str = re.findall(datetime_pattern, url)
+            print(url, date_str)
+            if len(date_str) and len(date_str[0]) == 6:
+                url_date = datetime_class(
+                    int(date_str[0][:4]), int(date_str[0][-2:]), 1)
+                print(start_time, url_date, end_time) 
+                print(url_date, (start_time <= url_date <= end_time))
+                return start_time <= url_date <= end_time
+            elif len(date_str) and len(date_str[0]) == 8:
+                url_date = datetime_class(
+                    int(date_str[0][:4]), int(date_str[0][4:6]), int(date_str[0][-2:]))
+                print(start_time, url_date, end_time)
+                print(url_date, (start_time <= url_date <= end_time))
+                return start_time <= url_date <= end_time
+            return False
+
+        return partial(time_range_filter,
+                       start_time=start_time,
+                       end_time=end_time,
+                       datetime_class=datetime_class,
+                       datetime_pattern='\d{6,8}')
+
+    async def crawl(self,
+                    urls: List[str],
+                    rules: ScrapeRules,
+                    compile: Callable = re.compile,
+                    chain: Callable = chain) -> None:
+        """ Crawls weather report site in the given manner
+        
+        This spider expects users to provide city names to scrape weather
+        of some areas. If location code is not provided, then it will scrape weather
+        data of all locations. The location code should be filled in the keywords field.
+
+        This spider also expects users to provide a time range. If not provided, it will
+        crawl all the weather reports.
+
+        Users will provide two pipelines:
+        1. Location filter pipeline for finding weather page links of specific locations
+        2. Weather page pipeline for parsing weather information
+            - required fields:
+                - province
+                - city
+                - title
+        
+        """
+        # validate parameters
+        assert len(urls) > 0
+        assert (
+            len(rules.parsing_pipeline) >= 2 and 
+            len(rules.parsing_pipeline[0].parse_rules) > 0 and
+            len(rules.parsing_pipeline[1].parse_rules) > 0)
+
+        assert self._required_fields_included(
+            rules=list(chain(*[rule.parse_rules for rule in rules.parsing_pipeline])),
+            fields_to_include=['province', 'city'])
+        
+        self._crawler_context.start_url = urls[0]
+
+        result_filter = self._get_weather_page_classifier()
+
+        if rules.url_patterns and len(rules.url_patterns) > 0:
+            pattern = compile(rules.url_patterns[0])
+            result_filter = self._get_weather_page_classifier(weather_page_url_pattern=pattern)
+
+        location_filter = self._get_location_filter(location_names=rules.keywords.include)
+        time_range_filter = self._get_time_range_filter(
+            start_time=rules.time_range.start_date,
+            end_time=rules.time_range.end_date
+        )
+
+        weather_pages = await self._crawler_context.crawl(
+            rules=rules.parsing_pipeline[0].parse_rules,
+            url_filter_functions=[
+                location_filter,
+                time_range_filter
+            ],
+            max_depth=rules.max_depth,
+            result_filter_func=result_filter
+        )
+        
+        parsed_weather_history = []
+        pipeline = rules.parsing_pipeline[1]
+        weather_parser = self._parse_strategy_factory.create(pipeline.parser)
+        for weather_page in weather_pages:
+            page_text = weather_page.page_src
+            parsed_results = weather_parser.parse(
+                page_text, rules=pipeline.parse_rules)
+            weather_table_title = parsed_results[0]
+            title = weather_table_title.value['title'].value
+            province = weather_table_title.value['province'].value
+            city = weather_table_title.value['city'].value
+            for row in parsed_results[1:]:
+                row_values = row.value
+                row_values['title'].value = title
+                row_values['province'].value = province
+                row_values['city'].value = city
+
+                for parsed_result in row_values.values():
+                    parsed_result.value = parsed_result.value.replace("\r\n ", "").replace(" ", "")
+
+            result_dt = datetime.now()
+            for daily_weather in parsed_results:
+                weather_record = self._result_db_model(
+                    result_id=self._table_id_generator(
+                        f"{daily_weather.value['title'].value}-{result_dt}"),
+                    name=f"{daily_weather.value['title'].value}",
+                    description="天气历史数据",
+                    data=daily_weather.value.values(),
+                    create_dt=result_dt
+                )
+                parsed_weather_history.append(weather_record)
+
+        await self._result_db_model.insert_many(parsed_weather_history)
+        print(parsed_weather_history)
+        print("Done!")
 
 
-SPIDER_TYPES = {
-    JobType.BASIC_PAGE_SCRAPING: HTMLSpiderService,
-    JobType.SEARCH_RESULT_AGGREGATION: SearchResultSpider,
-    JobType.WEB_CRAWLING: WebCrawlingSpider,
-    JobType.BAIDU_NEWS_SCRAPING: BaiduNewsSpider
-}
 
 class SpiderFactory(BaseServiceFactory):
 
-    def __init__(self):
-        pass
+    __spider_services__ = {
+        "basic_page_scraping": HTMLSpiderService,
+        "baidu_news_scraping": BaiduNewsSpider,
+        "baidu_covid_report": BaiduCOVIDSpider
+    }
     
-    @staticmethod
-    def create(spider_type: str, **kwargs):
+    @classmethod
+    def create(cls, spider_type: str, **kwargs):
         try:
-            return SPIDER_TYPES[spider_type.lower()](**kwargs)
+            return cls.__spider_services__[spider_type.lower()](**kwargs)
         except Exception:
             return None
 
@@ -522,12 +664,31 @@ if __name__ == "__main__":
         ScrapeRules, ParsingPipeline, ParseRule, KeywordRules, TimeRange
     )
     from ..core import Spider
+    from yaml import load, dump
+    from yaml import CLoader as Loader, CDumper as Dumper
+    from os import getcwd
+
 
     def create_client(host: str, username: str,
                       password: str, port: int,
                       db_name: str) -> AsyncIOMotorClient:
         return AsyncIOMotorClient(
             f"mongodb://{username}:{password}@{host}:{port}/{db_name}?authSource=admin")
+
+
+    def load_service_config(
+        config_name: str,
+        loader_func: Callable=load,
+        loader_class: Any=Loader,
+        config_class: Any = ScrapeRules,
+        config_path: str = f"{getcwd()}/spider/app/service_configs"
+    ) -> object:
+        with open(f"{config_path}/{config_name}.yml", "r") as f:
+            config_text = f.read()
+            parsed_obj = loader_func(config_text, Loader=loader_class)
+            config_obj = config_class.parse_obj(parsed_obj)
+            return config_obj
+
 
 
     async def test_spider_services(db_client,
@@ -537,6 +698,7 @@ if __name__ == "__main__":
                                    client_session_class,
                                    spider_class,
                                    parse_strategy_factory,
+                                   crawling_strategy_factory,
                                    spider_service_class,
                                    result_model_class,
                                    html_model_class,
@@ -547,12 +709,12 @@ if __name__ == "__main__":
         html_model_class.db = db
 
         async with (await client_session_class(headers=headers, cookies=cookies)) as client_session:
-            # spider = spider_class(request_client=client_session)
             spider_service = spider_service_class(request_client=client_session,
-                                                spider_class=spider_class,
-                                                parse_strategy_factory=parse_strategy_factory,
-                                                result_db_model=result_model_class,
-                                                html_data_model=html_model_class)
+                                                  spider_class=spider_class,
+                                                  parse_strategy_factory=parse_strategy_factory,
+                                                  crawling_strategy_factory=crawling_strategy_factory,
+                                                  result_db_model=result_model_class,
+                                                  html_data_model=html_model_class)
             await spider_service.crawl(test_urls, rules)
 
     cookie_text = """BIDUPSID=C2730507E1C86942858719FD87A61E58;
@@ -583,212 +745,76 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        "https://voice.baidu.com/act/newpneumonia/newpneumonia"
+        "http://www.tianqihoubao.com/lishi/"
     ]
     print(urls)
 
-    BAIDU_NEWS_SCAPE_CONFIG = ScrapeRules(
-        max_concurrency=10,
-        max_pages=5,
-        keywords=KeywordRules(
-            include=['深圳疫情', '广州疫情']),
-        time_range=TimeRange(past_days=5),
-        parsing_pipeline=[
-            ParsingPipeline(
-                parser="list_item_parser",
-                parse_rules=[
-                    ParseRule(
-                        field_name='title',
-                        rule_type='xpath',
-                        rule="//h3/a"
-                    ),
-                    ParseRule(
-                        field_name='href',
-                        rule_type='xpath',
-                        rule="//h3/a",
-                        is_link=True
-                    ),
-                    ParseRule(
-                        field_name='abstract',
-                        rule_type='xpath',
-                        rule="//span[contains(@class, 'c-font-normal') and contains(@class, 'c-color-text')]"
-                    ),
-                    ParseRule(
-                        field_name='date',
-                        rule_type='xpath',
-                        rule="//span[contains(@class, 'c-color-gray2') and contains(@class, 'c-font-normal')]"
-                    )
-                ]
-            ),
-            ParsingPipeline(
-                parser="general_news_parser",
-                parse_rules=[]
-            )
-        ],
-    )
 
-    BAIDU_COVID19_CONFIG = ScrapeRules(
+    WEATHER_CONFIG = ScrapeRules(
         keywords=KeywordRules(
-            include=['广东-深圳', '广东-广州']),
+            include=["wuhan", 'huangshi', 'shennongjia']),
+        max_depth=3,
+        max_concurrency=200,
+        time_range=TimeRange(
+            start_date=datetime(2021, 5, 1),
+            end_date=datetime(2021, 6, 1)
+        ),
         parsing_pipeline=[
             ParsingPipeline(
-                parser="list_item_parser",
+                name="weather_page_link_finder",
+                parser="link_parser",
                 parse_rules=[
                     ParseRule(
-                        field_name='domestic',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[1]/div[1]"
-                    ), ParseRule(
-                        field_name='last_update',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[1]/div[2]/span"
-                    ), ParseRule(
-                        field_name='confirmed_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[2]/div[1]/div[2]"
-                    ), ParseRule(
-                        field_name='new_asymptomatic_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[2]/div[2]/div[2]"
-                    ), ParseRule(
-                        field_name='suspicious_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[2]/div[3]/div[2]"
-                    ), ParseRule(
-                        field_name='serious_symptom_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[2]/div[4]/div[2]"
-                    ), ParseRule(
-                        field_name='total_confirmed_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[3]/div[1]/div[2]"
-                    ), ParseRule(
-                        field_name='imported_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[3]/div[2]/div[2]"
-                    ), ParseRule(
-                        field_name='total_cured',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[3]/div[3]/div[2]"
-                    ), ParseRule(
-                        field_name='total_deaths',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[3]/div[4]/div[2]"
-                    ),
-                ]
-            ), ParsingPipeline(
-                parser="list_item_parser",
-                parse_rules=[
-                    ParseRule(
-                        field_name='world',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-4']/div[1]"
-                    ), ParseRule(
-                        field_name='last_update',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-4']/div[2]/div[1]/span"
-                    ), ParseRule(
-                        field_name='current_confirmed_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[1]/div/div[2]"
-                    ), ParseRule(
-                        field_name='total_cured',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[2]/div/div[2]"
-                    ), ParseRule(
-                        field_name='total_death',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[1]/td[3]/div/div[2]"
-                    ), ParseRule(
-                        field_name='total_confirmed',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[1]/div/div[2]"
-                    ), ParseRule(
-                        field_name='recovery_rate',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[2]/div/div[2]"
-                    ), ParseRule(
-                        field_name='mortality_rate',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[4]/div[3]/div[6]/table/tbody/tr[2]/td[3]/div/div[2]"
+                        field_name="city_link",
+                        rule="//*[@id='content']/div[3]/dl[17]/dd/a|//*[@id='content']/div//ul/li/a",
+                        rule_type="xpath"
                     )
                 ]
-            ), ParsingPipeline(
-                parser="list_item_parser",
-                parse_rules=[
-                    ParseRule(
-                        field_name='domestic_city',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[1]"
-                    ), ParseRule(
-                        field_name='last_update',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[2]/span"
-                    ), ParseRule(
-                        field_name='confirmed_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/div/div[1]/div[1]/p[2]"
-                    ), ParseRule(
-                        field_name='domestic_new_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/div/div[1]/div[2]/p[2]"
-                    ), ParseRule(
-                        field_name='new_asymptomatic_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/div/div[1]/div[3]/p[2]"
-                    ), ParseRule(
-                        field_name='total_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/div/div[2]/div[1]/p[2]"
-                    ), ParseRule(
-                        field_name='total_cured',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/div/div[2]/div[2]/p[2]"
-                    ), ParseRule(
-                        field_name='total_deaths',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/div/div[2]/div[3]/p[2]"
-                    ),
-                ]
-            ), ParsingPipeline(
-                parser="list_item_parser",
-                parse_rules=[
-                    ParseRule(
-                        field_name='foreign_country',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[1]"
-                    ), ParseRule(
-                        field_name='last_update',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[1]/div[2]/span"
-                    ), ParseRule(
-                        field_name='confirmed_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[1]/div/div[2]"
-                    ), ParseRule(
-                        field_name='domestic_new_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[2]/div/div[2]"
-                    ), ParseRule(
-                        field_name='new_asymptomatic_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[1]/td[3]/div/div[2]"
-                    ), ParseRule(
-                        field_name='total_cases',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[1]/div/div[2]"
-                    ), ParseRule(
-                        field_name='total_cured',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[2]/div/div[2]"
-                    ), ParseRule(
-                        field_name='total_deaths',
-                        rule_type='xpath',
-                        rule="//*[@id='ptab-0']/div[2]/table/tbody/tr[2]/td[3]/div/div[2]"
-                    ),
-                ]
             ),
-        ],
+            ParsingPipeline(
+                name="weather_extractor",
+                parser="list_item_parser",
+                parse_rules=[
+                    ParseRule(
+                        field_name="title",
+                        rule="//*[@id='content']/h1",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="province",
+                        rule="//*[@id='mnav']/div[1]/a[2]",
+                        rule_type="xpath",
+                        slice_str=(0, 2)
+                    ),
+                    ParseRule(
+                        field_name="city",
+                        rule="//*[@id='content']/h1",
+                        rule_type="xpath",
+                        slice_str=(0, 2)
+                    ),
+                    ParseRule(
+                        field_name="date",
+                        rule="//tr/td[1]/a",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="weather",
+                        rule="//tr/td[2]",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="temperature",
+                        rule="//tr/td[3]",
+                        rule_type="xpath"
+                    ),
+                    ParseRule(
+                        field_name="wind",
+                        rule="//tr/td[4]",
+                        rule_type="xpath"
+                    )
+                ]
+            )
+        ]
     )
 
     loop = asyncio.get_event_loop()
@@ -797,14 +823,15 @@ if __name__ == "__main__":
         db_name=use_db,
         headers=headers.dict(),
         cookies=cookies,
-        client_session_class=AsyncBrowserRequestClient,
+        client_session_class=RequestClient,
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
-        spider_service_class=BaiduCOVIDSpider,
+        crawling_strategy_factory=CrawlerContextFactory,
+        spider_service_class=WeatherSpiderService,
         result_model_class=Result,
         html_model_class=HTMLData,
         test_urls=urls,
-        rules=BAIDU_COVID19_CONFIG
+        rules=WEATHER_CONFIG
     ))
 
 # (title, href, abstract, date)

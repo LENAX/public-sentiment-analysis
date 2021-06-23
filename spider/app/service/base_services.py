@@ -46,8 +46,10 @@ class BaseServiceFactory(ABC):
     """ Provides the common interface for creating services
     """
 
+    @abstractmethod
     def create(self, spec: Any, **kwargs) -> Any:
         return NotImplemented
 
+    @abstractmethod
     def register(self, name: str, product: Any, **kwargs) -> Any:
         return NotImplemented

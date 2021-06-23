@@ -7,6 +7,7 @@ from ..models.data_models import (
 from .parse_driver import ParseDriver
 from .exceptions import InvalidBaseURLException
 from itertools import zip_longest
+from urllib.parse import urljoin
 import chardet
 
 class BaseParsingStrategy(ABC):
@@ -142,6 +143,11 @@ class ListItemParser(BaseParsingStrategy):
                     else:
                         # assume that user wants text for now
                         attr_value = attr.text_content().strip()
+                    
+                    if rule.slice_str:
+                        start, end = rule.slice_str
+                        attr_value = attr_value[start: end]
+                    
                     item[rule.field_name] = ParseResult(
                         name=rule.field_name, value=attr_value)
                 else:
@@ -149,18 +155,6 @@ class ListItemParser(BaseParsingStrategy):
                         name=rule.field_name, value="")
             
             parsed_content.append(ParseResult(name='item', value=item))
-
-            # if len(contents) > 0:
-            #     for content_attributes in parsed_html.get_element_attributes(contents, ['text', 'href']):
-            #         if not rule.is_link and self._valid(content_attributes['text']):
-            #             parsed_content.append(
-            #                 ParseResult(name=rule.field_name, value=content_attributes['text'].strip()))
-            #         if rule.is_link and self._valid(content_attributes['href']):
-            #             parsed_content.append(
-            #                 ParseResult(name=rule.field_name, value=content_attributes['href'].strip()))
-            # else:
-            #     parsed_content.append(
-            #         ParseResult(name=rule.field_name, value=''))
 
         return parsed_content
 
@@ -230,7 +224,7 @@ class LinkParser(BaseParsingStrategy):
             raise InvalidBaseURLException("Please provide a valid base url starting with (http|https|ftp)")
     
 
-    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
+    def parse(self, text: str, rules: List[ParseRule], urljoin: Callable = urljoin) -> List[ParseResult]:
         parsed_html = self._parser(text)
         parsed_links = set()
 
@@ -244,7 +238,7 @@ class LinkParser(BaseParsingStrategy):
                     url = link_url['href']
                     if not url.startswith("http") and self._base_url is not None:
                         # try to convert relative url to absolute url
-                        url = f"{self._base_url}/{url}"
+                        url = urljoin(self._base_url, url)
 
                     parsed_links.add(ParseResult(
                         name=link_url['text'], value=url))
@@ -298,6 +292,18 @@ class ParserContext(object):
         self._parsing_strategy = parsing_strategy
 
     @property
+    def base_url(self) -> str:
+        if hasattr(self._parsing_strategy, 'base_url'):
+            return self._parsing_strategy.base_url
+        else:
+            return ""
+
+    @base_url.setter
+    def base_url(self, new_url) -> None:
+        if hasattr(self._parsing_strategy, 'base_url'):
+            self._parsing_strategy.base_url = new_url
+
+    @property
     def parsing_strategy(self) -> BaseParsingStrategy:
         return self._parsing_strategy
 
@@ -310,6 +316,8 @@ class ParserContext(object):
 
 
 class ParserContextFactory(object):
+    """ Handles ParserContext Creation """
+    
     __parser_classes__ = {
         'general_parser': HTMLContentParser,
         'link_parser': LinkParser,
@@ -331,10 +339,10 @@ class ParserContextFactory(object):
         return cls.__parser_driver__
 
     @classmethod
-    def create(cls, parser_name: str) -> ParserContext:
+    def create(cls, parser_name: str, **kwargs) -> ParserContext:
         parser_cls = cls.__parser_classes__.get(
             parser_name, cls.__default_parser_cls__)
-        parser = parser_cls(cls.__parser_driver__)
+        parser = parser_cls(cls.__parser_driver__, **kwargs)
         ctx = cls.__parser_context__(
             parsing_strategy=parser)
         return ctx

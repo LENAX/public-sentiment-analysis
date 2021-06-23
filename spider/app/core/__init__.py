@@ -2,7 +2,8 @@ from .spider import (
     BaseSpider, Spider, WebSpider
 )
 from .crawling import (
-    BaseCrawlingStrategy, CrawlerContext, BFSCrawling
+    BaseCrawlingStrategy, CrawlerContext, BFSCrawling,
+    CrawlerContextFactory
 )
 from .parser import (
     BaseParsingStrategy, ParserContext, LinkParser,
