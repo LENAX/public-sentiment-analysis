@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from ..models.data_models import URL, DataModel
-from typing import Any, List
+from typing import List, Any, Callable
 
 class BaseSpiderService(ABC):
     """ Defines common interface for spider services.
@@ -14,16 +14,19 @@ class BaseSpiderService(ABC):
 class BaseCollectionService(ABC):
     """ Provides the common interface for accessing data in a collection
     """
-
+    @abstractmethod
     def add(self, data: DataModel) -> Any:
         return NotImplemented
 
+    @abstractmethod
     def get(self, query_condition: dict) -> DataModel:
         return NotImplemented
 
+    @abstractmethod
     def update(self, data: DataModel) -> Any:
         return NotImplemented
 
+    @abstractmethod
     def delete(self, query_condition: dict) -> DataModel:
         return NotImplemented
 
@@ -31,14 +34,20 @@ class BaseCollectionService(ABC):
 class BaseJobService(ABC):
     """ Provides the common interface for handling spider jobs
     """
-
-    def add(self, job_spec: Any, worker: Any) -> Any:
+    @abstractmethod
+    def add_job(self, func: Callable, **kwargs) -> Any:
         return NotImplemented
 
-    def start(self, **kwargs) -> Any:
+    @abstractmethod
+    def update_job(self, job_id: str, **kwargs) -> Any:
         return NotImplemented
 
-    def get_state(self) -> Any:
+    @abstractmethod
+    def delete_job(self, job_id: str) -> Any:
+        return NotImplemented
+
+    @abstractmethod
+    def get_job(self, job_id: str) -> Any:
         return NotImplemented
 
 
