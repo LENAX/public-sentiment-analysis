@@ -1,5 +1,5 @@
 from .response_models import (
-    JobCreationResponse,
+    JobResponse,
     JobResultResponse,
     ResultQueryResponse,
     SinglePageResponse
