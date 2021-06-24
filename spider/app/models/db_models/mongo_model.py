@@ -5,7 +5,7 @@ from typing import Optional, Any, List
 from ...db import AsyncMongoCRUDBase
 from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
 from uuid import UUID
-
+from enum import Enum
 
 class MongoModel(BaseModel, AsyncMongoCRUDBase):
 
@@ -41,17 +41,14 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
         if not data:
             return data
         id = data.pop('_id', None)
-        return cls(**dict(data, id=id))
+        parsed = cls(**dict(data))
+        parsed.id = id
+        return parsed
 
     def mongo(self, **kwargs):
         exclude_unset = kwargs.pop('exclude_unset', True)
         by_alias = kwargs.pop('by_alias', True)
 
-        # parsed = self.dict(
-        #     exclude_unset=exclude_unset,
-        #     by_alias=by_alias,
-        #     **kwargs,
-        # )
         parsed = self.todict(
             self,
             exclude_unset=exclude_unset,
@@ -81,7 +78,7 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
                     exclude_unset=exclude_unset,
                     by_alias=by_alias)
             return data
-        elif type(obj) is UUID:
+        elif type(obj) is UUID or isinstance(obj, Enum):
             return str(obj)
         elif hasattr(obj, "_ast"):
             return cls.todict(obj._ast(),
@@ -113,8 +110,8 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
     @classmethod
     async def get(cls, query: Any) -> List[object]:
         try:
-            query_result = await cls.__db__[cls.__collection__].find(query)
-            result = [cls.from_mongo(data) for data in query_result]
+            query_result = cls.db[cls.__collection__].find(query)
+            result = [cls.from_mongo(data) async for data in query_result]
             return result
         except AttributeError as e:
             print(e("You must set db instance before getting any data"))
@@ -127,7 +124,46 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
                 print("Successfully saved 1 record.")
         except Exception as e:
             print(e)
+            raise e
 
+    async def update(self, new_values, field: str = "_id"):
+        
+        if field != "_id" and not hasattr(self, field):
+            raise ValueError(
+                f"id field {field} does not exist in type {type(self)}")
+        elif field == "_id":
+            value = getattr(self, "id")
+        else:
+            value = getattr(self, field)
+
+        try:
+            result = await self.db[self.__collection__].update_one(
+                {field: value}, {"$set": new_values})
+            if result.modified_count and result.raw_result['updatedExisting']:
+                print("Successfully updated 1 record.")
+            else:
+                print("update failed.")
+        except Exception as e:
+            print(e)
+            raise e
+
+    async def delete(self, field: str = "_id", **kwargs):
+        if field != "_id" and not hasattr(self, field):
+            raise ValueError(
+                f"id field {field} does not exist in type {type(self)}")
+        elif field == "_id":
+            value = getattr(self, "id")
+        else:
+            value = getattr(self, field)
+
+        try:
+            result = await self.db[self.__collection__].delete_one(
+                {field: value})
+            if result:
+                print("Successfully deleted 1 record.")
+        except Exception as e:
+            print(e)
+            raise e
 
 if __name__ == "__main__":
     general_mongo_model = MongoModel()
