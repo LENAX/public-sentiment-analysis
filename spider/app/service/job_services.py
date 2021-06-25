@@ -17,6 +17,7 @@ from bson.objectid import ObjectId
 from asyncio import Lock
 
 TZInfo = TypeVar("TZInfo")
+Datetime = TypeVar("Datetime")
 
 class AsyncJobService(BaseJobService):
     """ Provides async job management using APScheduler
@@ -28,7 +29,7 @@ class AsyncJobService(BaseJobService):
                  job_status_model: JobStatus = JobStatus,
                  oid_generator: ObjectId = ObjectId,
                  uuid_generator: Callable = uuid4,
-                 datetime: datetime = datetime,
+                 datetime: Datetime = datetime,
                  lock: Lock = Lock) -> None:
         self._async_scheduler = async_scheduler
         self._job_model = job_model
@@ -71,12 +72,15 @@ class AsyncJobService(BaseJobService):
             return JobResponse.fail(status_code=500, message=str(e))
 
     async def update_job(self, job_id: str, **changes) -> JobResponse:
+        if type(job_id) is not str:
+            job_id = str(job_id)
+        
         try:
             ap_job = self._async_scheduler.get_job(job_id)
-            ap_job.modify(**changes)
-            updates = {key: changes[key] for key in changes}
+            ap_job.modify(**{key: changes[key] for key in changes if hasattr(ap_job, key)})
+            updates = {key: changes[key] for key in changes if key in self._job_model.__fields__}
             await self._job_model.update_one(
-                query={"job_id": job_id}, update=updates)
+                filter={"job_id": job_id}, update=updates)
             
             return JobResponse.success(
                     job_id=job_id,
@@ -107,6 +111,9 @@ class AsyncJobService(BaseJobService):
                              start_date: Union[datetime, str] = None,
                              end_date: Union[datetime, str] = None,
                              timezone: Union[TZInfo, str] = None, **kwargs) -> JobResponse:
+        if type(job_id) is not str:
+            job_id = str(job_id)
+
         try:
             if trigger != 'cron':
                 self._async_scheduler.reschedule_job(job_id=job_id, trigger=trigger, **kwargs)
@@ -121,6 +128,9 @@ class AsyncJobService(BaseJobService):
             return JobResponse.fail(status_code=500, message=str(e))
  
     async def delete_job(self, job_id: str) -> JobResponse:
+        if type(job_id) is not str:
+            job_id = str(job_id)
+
         try:
             self._async_scheduler.remove_job(job_id)
             await self._job_model.delete_one({"job_id": job_id})
@@ -130,6 +140,9 @@ class AsyncJobService(BaseJobService):
             return JobResponse.fail(status_code=500, message=str(e))
 
     async def delete_jobs(self, job_ids: List[str]) -> JobResponse:
+        if type(job_id) is not str:
+            job_id = str(job_id)
+
         try:
             job_id_set = set(job_ids)
             ap_jobs_to_remove = []
@@ -145,14 +158,17 @@ class AsyncJobService(BaseJobService):
             return JobResponse.fail(status_code=500, message=str(e))
 
     async def get_job(self, job_id: str) -> JobResponse:
+        if type(job_id) is not str:
+            job_id = str(job_id)
+
         try:
             ap_job = self._async_scheduler.get_job(job_id)
-            job = await self._job_model.get({"job_id": job_id})
+            job = await self._job_model.get_one({"job_id": job_id})
             job.next_run_time = ap_job.next_run_time
 
             return JobResponse.success(
                     job_id=job_id,
-                    job=job[0])
+                    job=job)
         except IndexError:
             return JobResponse.fail(status_code=404, message="Job not found")
         except Exception as e:
@@ -360,6 +376,9 @@ if __name__ == "__main__":
             logger.debug(f"added_jobs: {response}")
             print("****************\n")
     
+    async def wait_for_tasks(seconds):
+        await asyncio.sleep(seconds)
+    
     async def clean_up(db_client):
         await db_client.spiderDB.Job.drop()
         await db_client.apscheduler.jobs.drop()
@@ -396,8 +415,8 @@ if __name__ == "__main__":
     try:
         for test_case in test_cases:
             loop.run_until_complete(test_case)
-            # time.sleep(3)
-        loop.run_forever()
+            time.sleep(2)
+        loop.run_until_complete(wait_for_tasks(10))
     except Exception as e:
         print(e)
     finally:

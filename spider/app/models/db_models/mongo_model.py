@@ -121,7 +121,7 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
     async def get_one(cls, query: dict) -> object:
         try:
             result = await cls.db[cls.__collection__].find_one(query)
-            return result
+            return cls.from_mongo(result)
         except AttributeError as e:
             print(e("You must set db instance before getting any data"))
             return []
@@ -151,7 +151,7 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
     @classmethod
     async def update_many(cls, filter: dict, update: dict) -> None:
         try:
-            update_result = await cls.db[cls.__collection__].update_many(filter, update)
+            update_result = await cls.db[cls.__collection__].update_many(filter, {"$set":update})
             if update_result:
                 print(
                     f"Successfully matched {update_result.matched_count}"
@@ -163,7 +163,7 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
     @classmethod
     async def update_one(cls, filter: dict, update: dict) -> None:
         try:
-            update_result = await cls.db[cls.__collection__].update_one(filter, update)
+            update_result = await cls.db[cls.__collection__].update_one(filter, {"$set":update})
             if update_result:
                 print(
                     f"Successfully matched {update_result.matched_count}"
