@@ -5,8 +5,9 @@ from typing import List, Callable, Generator
 from .spider import BaseSpider
 from asyncio import Queue, LifoQueue, PriorityQueue, QueueEmpty
 from ..models.data_models import (
-    ParseRule, ParseResult, URL, HTMLData, CrawlResult
+    ParseResult, URL, HTMLData, CrawlResult
 )
+from ..models.request_models import ParseRule
 from .parser import ParserContext, LinkParser
 from .exceptions import QueueNotProperlyInitialized
 from ..utils import throttled

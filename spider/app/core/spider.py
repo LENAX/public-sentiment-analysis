@@ -6,20 +6,15 @@ from .request_client import RequestClient, AsyncBrowserRequestClient
 from ..enums import RequestStatus
 from asyncio import TimeoutError
 from .parser import ParserContext
-from ..models.data_models import (
-    ParseRule, ParseResult
-)
 from concurrent.futures import ProcessPoolExecutor
+
+SpiderInstance = TypeVar("SpiderInstance")
 
 class BaseSpider(ABC):
 
     def fetch(self, url: str, params: dict = {}):
         return NotImplemented
 
-    def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
-        return NotImplemented
-
-SpiderInstance = TypeVar("SpiderInstance")
 
 class Spider(BaseSpider):
     """ Core Spider Class for fetching web pages """
@@ -122,67 +117,6 @@ class Spider(BaseSpider):
         return url_to_request, self._result
 
 
-class WebSpider(BaseSpider):
-    """ WebSpider uses a local parser to parse links and web contents.
-    """
-
-    def __init__(self, request_client: RequestClient, parser: ParserContext,
-                 process_executor: ProcessPoolExecutor):
-        self._request_client = request_client
-        self._request_status = None
-        self._parser = parser
-        self._process_executor = process_executor
-        self._result = ""
-
-    @property
-    def result(self):
-        return self._result
-
-    @result.setter
-    def result(self, value):
-        self._result = value
-
-    @property
-    def request_status(self):
-        return self._request_status
-
-    @request_status.setter
-    def request_status(self, value):
-        self._request_status = value
-
-    def __repr__(self):
-        if len(self._result):
-            return f"<Spider request_status={self._request_status} result={self._result[:30]}>"
-        else:
-            return f"<Spider request_status={self._request_status}>"
-
-    async def fetch(self, url: str, params: dict = {}) -> Tuple[str, str]:
-        """ Fetch a web page
-
-        Args:
-            url: str
-            params: dict, Additional parameters to pass to request
-
-        Returns:
-            url
-            result
-        """
-        try:
-            async with self._request_client.get(url=url, params=params) as response:
-                self._request_status = RequestStatus.from_status_code(
-                    response.status)
-                self._result = await response.text()
-
-        except TimeoutError as e:
-            self._request_status = RequestStatus.TIMEOUT
-        except Exception as e:
-            print(e)
-
-        return url, self._result
-
-    async def parse(self, text: str, rules: List[ParseRule]) -> List[ParseResult]:
-        return self._parser.parse(text, rules)
-    
 
 if __name__ == "__main__":
     import aiohttp
