@@ -1,12 +1,15 @@
 from pydantic import BaseModel
+from typing import Any
 
 class ResponseModel(BaseModel):
     status_code: int
     message: str
+    data: Any
 
     @classmethod
-    def success(cls) -> "ResponseModel":
-        return cls(status_code=200,
+    def success(cls, data=None) -> "ResponseModel":
+        return cls(data=data,
+                   status_code=200,
                    message="success")
 
     @classmethod

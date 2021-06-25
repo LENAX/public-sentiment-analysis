@@ -108,11 +108,66 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
             print(e)
 
     @classmethod
-    async def get(cls, query: Any) -> List[object]:
+    async def get(cls, query: dict) -> List[object]:
         try:
             query_result = cls.db[cls.__collection__].find(query)
             result = [cls.from_mongo(data) async for data in query_result]
             return result
+        except AttributeError as e:
+            print(e("You must set db instance before getting any data"))
+            return []
+
+    @classmethod
+    async def get_one(cls, query: dict) -> object:
+        try:
+            result = await cls.db[cls.__collection__].find_one(query)
+            return result
+        except AttributeError as e:
+            print(e("You must set db instance before getting any data"))
+            return []
+
+    @classmethod
+    async def delete_many(cls, query: dict) -> None:
+        try:
+            delete_result = await cls.db[cls.__collection__].delete_many(query)
+            if delete_result:
+                print(
+                    f"Successfully deleted {delete_result.deleted_count} records.")
+        except AttributeError as e:
+            print(e("You must set db instance before getting any data"))
+            return []
+
+    @classmethod
+    async def delete_one(cls, query: dict) -> None:
+        try:
+            delete_result = await cls.db[cls.__collection__].delete_one(query)
+            if delete_result:
+                print(
+                    f"Successfully deleted {delete_result.deleted_count} records.")
+        except AttributeError as e:
+            print(e("You must set db instance before getting any data"))
+            return []
+
+    @classmethod
+    async def update_many(cls, filter: dict, update: dict) -> None:
+        try:
+            update_result = await cls.db[cls.__collection__].update_many(filter, update)
+            if update_result:
+                print(
+                    f"Successfully matched {update_result.matched_count}"
+                    f" and updated {update_result.modified_count} records.")
+        except AttributeError as e:
+            print(e("You must set db instance before getting any data"))
+            return []
+
+    @classmethod
+    async def update_one(cls, filter: dict, update: dict) -> None:
+        try:
+            update_result = await cls.db[cls.__collection__].update_one(filter, update)
+            if update_result:
+                print(
+                    f"Successfully matched {update_result.matched_count}"
+                    f" and updated {update_result.modified_count} records.")
         except AttributeError as e:
             print(e("You must set db instance before getting any data"))
             return []
@@ -147,7 +202,7 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
             print(e)
             raise e
 
-    async def delete(self, field: str = "_id", **kwargs):
+    async def delete(self, field: str = "_id", **kwargs) -> None:
         if field != "_id" and not hasattr(self, field):
             raise ValueError(
                 f"id field {field} does not exist in type {type(self)}")

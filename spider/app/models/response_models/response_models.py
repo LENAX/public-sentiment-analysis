@@ -13,8 +13,8 @@ class JobResponse(ResponseModel):
     last_update: Optional[datetime]
     
     @classmethod
-    def success(cls, job_id: str, create_dt: datetime,
-                last_update: datetime, job: Job = None) -> "JobResponse":
+    def success(cls, job_id: str = None, create_dt: datetime = None,
+                last_update: datetime = None, job: Job = None) -> "JobResponse":
         return cls(job_id=job_id,
                    job=job,
                    create_dt=create_dt,
@@ -25,6 +25,10 @@ class JobResponse(ResponseModel):
     @classmethod
     def fail(cls, status_code: int, message: str) -> "JobResponse":
         return cls(status_code=status_code, message=message)
+
+    def __repr__(self):
+        return (f"<JobResponse job={self.job}"
+                f" status_code={self.status_code} message={self.message}>")
 
 class JobResultResponse(ResponseModel):
     job_result: JobResult
