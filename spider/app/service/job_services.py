@@ -140,9 +140,6 @@ class AsyncJobService(BaseJobService):
             return JobResponse.fail(status_code=500, message=str(e))
 
     async def delete_jobs(self, job_ids: List[str]) -> JobResponse:
-        if type(job_id) is not str:
-            job_id = str(job_id)
-
         try:
             job_id_set = set(job_ids)
             ap_jobs_to_remove = []
