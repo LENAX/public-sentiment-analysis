@@ -16,9 +16,9 @@ db_client = create_client(host='localhost',
                           password='root',
                           port=27017,
                           db_name='spiderDB')
-client = MongoClient('mongodb://admin:root@localhost:27017/spiderDB?authSource=admin')
+# client = MongoClient('mongodb://admin:root@localhost:27017/spiderDB?authSource=admin')
 jobstores = {
-    'mongo': MongoDBJobStore(client=client)
+    'mongo': MongoDBJobStore(client=db_client.delegate)
 }
 executors = {
     'default': AsyncIOExecutor(),
@@ -43,17 +43,26 @@ async def test_job():
 async def tick():
     print('Tick! The time is: %s' % datetime.now())
 
-if __name__ == "__main__":
-    # loop = asyncio.new_event_loop()
-    scheduler.start()
+async def add_job(scheduler):
     job = scheduler.add_job(
         test_job, name=None, trigger='interval', seconds=5)
+    await asyncio.sleep(1)
     print(job.next_run_time)
     print(scheduler.get_jobs())
-    
+
+if __name__ == "__main__":
+    import logging
+
+    logging.basicConfig()
+    logging.getLogger('apscheduler').setLevel(logging.DEBUG)
+
+
+    scheduler.start()
     
     try:  
-        asyncio.get_event_loop().run_forever()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(add_job(scheduler))
+        loop.run_forever()
     except (KeyboardInterrupt, SystemExit):
         pass
     # async_task = tick()
