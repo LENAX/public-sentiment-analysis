@@ -1,28 +1,24 @@
 from .mongo_model import MongoModel
-from typing import Optional, List, Any
-from datetime import date, datetime, timedelta
-from ..request_models import JobSpecification
+from typing import Optional
+from datetime import datetime
 from ...enums import JobState
-from uuid import UUID
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson.objectid import ObjectId
-
-
-class JobStatus(MongoModel):
-    job_id: UUID
-    create_dt: datetime
-    page_count: int = 0
-    time_consumed: Optional[timedelta]
-    current_state: JobState
-    specification: JobSpecification
+from ..extended_types import PydanticObjectId
+from pydantic import Field
+from uuid import UUID, uuid5, uuid4, NAMESPACE_OID
 
 
 class Job(MongoModel):
     __collection__: str = "Job"
     __db__: AsyncIOMotorDatabase
 
-    id: Optional[Any]
-    job_id: UUID
+    id: PydanticObjectId = Field(
+        default_factory=lambda: ObjectId())
+    job_id: UUID = Field(
+        default_factory=lambda: uuid5(
+            NAMESPACE_OID, f"Job_Object_{datetime.now().timestamp()}"))
+
     name: str
     description: str = ""
     current_state: JobState
@@ -43,6 +39,7 @@ if __name__ == "__main__":
     from datetime import datetime
     from motor.motor_asyncio import AsyncIOMotorClient
     from bson.objectid import ObjectId
+    from ..extended_types import PydanticObjectId
 
 
     def create_client(host: str, username: str,
@@ -62,32 +59,28 @@ if __name__ == "__main__":
         Job.db = db_client[db_name]
 
         # await db_client.get_collections()
-
-        job_id = uuid.uuid4()
         test_job = Job(
-            id=ObjectId(),
-            job_id=job_id,
             name="test",
             description="a test job",
             current_state=JobState.WORKING,
             next_run_time=datetime(2021,6,30,9,0,0)
         )
         await test_job.save()
-        jobs = await Job.get({"job_id": str(job_id)})
+        jobs = await Job.get({"job_id": str(test_job.job_id)})
         fetched = jobs[0]
-        assert fetched.job_id == job_id
+        assert fetched.job_id == test_job.job_id
         print(test_job)
         print(fetched)
 
         await test_job.update({"name": "updated_test"})
-        jobs = await Job.get({"job_id": str(job_id)})
+        jobs = await Job.get({"job_id": str(test_job.job_id)})
         fetched = jobs[0]
         assert fetched.name == "updated_test"
         # print(test_job)
         print(f"updated: {fetched}!!!!!")
 
         await test_job.delete()
-        jobs = await Job.get({"job_id": str(job_id)})
+        jobs = await Job.get({"job_id": str(test_job.job_id)})
         assert len(jobs) == 0
         print("test completed!")
 

@@ -14,3 +14,7 @@ class ParseResult(BaseModel):
 
     def __hash__(self):
         return hash(self.__repr__())
+
+    def value_to_dict(self) -> dict:
+        return {key: self.value[key].value
+                for key in self.value}
