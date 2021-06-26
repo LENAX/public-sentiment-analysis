@@ -1,6 +1,6 @@
 from .base import ResponseModel
 from typing import Optional, List, Any, Union
-from ..data_models import JobResult, HTMLData
+from ..data_models import HTMLData
 from ..db_models import Job
 from ..request_models import ResultQuery
 from datetime import datetime
@@ -29,10 +29,6 @@ class JobResponse(ResponseModel):
     def __repr__(self):
         return (f"<JobResponse job={self.job}"
                 f" status_code={self.status_code} message={self.message}>")
-
-class JobResultResponse(ResponseModel):
-    job_result: JobResult
-
 
 class ResultQueryResponse(ResponseModel):
     data: List[HTMLData]
