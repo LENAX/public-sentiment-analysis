@@ -1,17 +1,24 @@
-from pydantic import BaseModel
-from typing import Any
+from typing import Generic, TypeVar, Optional, List, Any
 
-class ResponseModel(BaseModel):
-    status_code: int
+from pydantic import BaseModel, validator, ValidationError
+from pydantic.generics import GenericModel
+
+DataT = TypeVar('DataT')
+
+
+class Error(BaseModel):
+    code: int
     message: str
-    data: Any
 
-    @classmethod
-    def success(cls, data=None) -> "ResponseModel":
-        return cls(data=data,
-                   status_code=200,
-                   message="success")
 
-    @classmethod
-    def fail(cls, status_code: int, message: str) -> "ResponseModel":
-        return cls(status_code=status_code, message=message)
+class Response(GenericModel, Generic[DataT]):
+    data: Optional[DataT]
+    error: Optional[Error]
+
+    @validator('error', always=True)
+    def check_consistency(cls, v, values):
+        if v is not None and values['data'] is not None:
+            raise ValueError('must not provide both data and error')
+        if v is None and values.get('data') is None:
+            raise ValueError('must provide data or error')
+        return v

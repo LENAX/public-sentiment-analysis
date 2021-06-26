@@ -3,26 +3,33 @@ import asyncio
 from uuid import uuid5, NAMESPACE_OID
 from functools import partial
 from datetime import datetime, timedelta
-from typing import List, Any, Tuple, Callable, TypeVar
+from typing import List, Any, Tuple, Callable, TypeVar, Union
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from concurrent.futures import ProcessPoolExecutor
 from .base_services import BaseSpiderService, BaseServiceFactory
 from ..models.data_models import (
     RequestHeader,
-    URL,
     HTMLData,
     CrawlResult
 )
 from ..models.request_models import ScrapeRules, ParseRule
-from ..models.db_models import Result
+from ..models.db_models import (
+    Result, Weather, AirQuality, COVIDReport, News
+)
 from ..enums import JobType
 from ..core import (
-    BaseSpider, CrawlerContext, ParserContextFactory,
+    BaseSpider, ParserContextFactory,
     BaseRequestClient, AsyncBrowserRequestClient, RequestClient,
     CrawlerContextFactory
 )
 from ..utils import throttled
 from itertools import chain
+import logging
+from logging import Logger, getLogger
+
+logging.basicConfig()
+spider_service_logger = logging.getLogger(__name__)
+spider_service_logger.setLevel(logging.DEBUG)
 
 """ Defines all spider services
 
@@ -44,7 +51,6 @@ class HTMLSpiderService(BaseSpiderService):
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: Result,
                  html_data_model: HTMLData,
-                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
                  coroutine_runner: Callable = asyncio.gather,
                  throttled_fetch: Callable = throttled,
                  **kwargs) -> None:
@@ -53,7 +59,6 @@ class HTMLSpiderService(BaseSpiderService):
         self._parse_strategy_factory= parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
-        self._table_id_generator = table_id_generator
         self._coroutine_runner = coroutine_runner
         self._throttled_fetch = throttled_fetch
 
@@ -101,22 +106,22 @@ class BaiduNewsSpider(BaseSpiderService):
                  request_client: BaseRequestClient,
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
-                 result_db_model: Result,
-                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
+                 result_db_model: News,
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
                  process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
                  throttled_fetch: Callable = throttled,
+                 logger: Logger = getLogger(f"{__name__}.BaiduNewsSpider"),
                  **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
-        self._table_id_generator = table_id_generator
         self._coroutine_runner = coroutine_runner
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
         self._throttled_fetch = throttled_fetch
+        self._logger = logger
         self._create_time_string_extractors()
 
     def _create_time_string_extractors(self):
@@ -199,6 +204,9 @@ class BaiduNewsSpider(BaseSpiderService):
                 type(rules.max_pages) is int and 
                 len(rules.keywords.include) > 0)
 
+        self._logger.info("Parameters are validated. Prepare crawling...")
+        self._logger.info("Start crawling news...")
+
         # generate search page urls given keywords and page limit
         for search_base_url in urls:
             search_urls = [f"{search_base_url}&word={kw}&{paging_param}={page_number}"
@@ -206,11 +214,16 @@ class BaiduNewsSpider(BaseSpiderService):
                            for kw in rules.keywords.include]
             spiders.extend(self._spider_class.create_from_urls(search_urls, self._request_client))
 
+
         # concurrently fetch search results with a concurrency limit
         # TODO: could boost parallelism by running parsers at the same time
         search_result_pages = await self._throttled_fetch(
-            rules.max_concurrency, *[spider.fetch() for spider in spiders])
+            rules.max_concurrency, [spider.fetch() for spider in spiders])
 
+        self._logger.info(
+            f"Crawl completed. Fetched {len(search_result_pages)} results.")
+        self._logger.info(f"Start crawling news pages...")
+        self._logger.info(f"Parsing news list...")
         # for now, the pipeline is fixed to the following
         # 1. extract all search result blocks from search result pages (title, href, abstract, date)
         # step 1 will produce a list of List[ParseResult], and have to assume the order to work correctly
@@ -218,6 +231,10 @@ class BaiduNewsSpider(BaseSpiderService):
         parsed_search_result = []
         search_page_parser = self._parse_strategy_factory.create(
             rules.parsing_pipeline[0].parser)
+
+        self._logger.info(f"Standardizing news' publish dates..")
+        
+        
         for _, raw_page in search_result_pages:
             search_results = search_page_parser.parse(
                 raw_page, rules.parsing_pipeline[0].parse_rules)
@@ -231,8 +248,12 @@ class BaiduNewsSpider(BaseSpiderService):
 
             parsed_search_result.extend(search_results)
         
+        self._logger.info(f"News list is parsed.")
+        self._logger.info(f"News' publish dates standardized.")
+        
         # 2. if date is provided, parse date strings and include those pages within date range
         if (len(parsed_search_result) > 0 and rules.time_range):
+            self._logger.info(f"Applying time filters")
             if rules.time_range.past_days:
                 last_date = datetime.now() - timedelta(days=rules.time_range.past_days)
                 parsed_search_result = [result for result in parsed_search_result
@@ -252,6 +273,7 @@ class BaiduNewsSpider(BaseSpiderService):
                             
         # 3. if keyword exclude is provided, exclude all pages having those keywords
         if (len(parsed_search_result) > 0 and rules.keywords and rules.keywords.exclude):
+            self._logger.info(f"Applying keyword filters...")
             exclude_kws = "|".join(rules.keywords.exclude)
             exclude_patterns = re.compile(f'^((?!{exclude_kws}).)*$')
             parsed_search_result = [result for result in parsed_search_result
@@ -260,44 +282,46 @@ class BaiduNewsSpider(BaseSpiderService):
                                         re.finditer(exclude_patterns, result.value['abstract']) and
                                         re.finditer(exclude_patterns, result.value['title']))]
         
+        self._logger.info(
+            f"Got {len(parsed_search_result)} after filtering...")
+        self._logger.info(f"Start crawling news pages...")
         # 4. fetch remaining pages
+        content_pages = []
         if (len(parsed_search_result) > 0):
             content_urls = [result.value['href'].value for result in parsed_search_result]
             content_spiders = self._spider_class.create_from_urls(content_urls, self._request_client)
             content_pages = await self._throttled_fetch(
-                rules.max_concurrency, *[spider.fetch() for spider in content_spiders])
+                rules.max_concurrency, [spider.fetch() for spider in content_spiders])
+        
+            self._logger.info(f"Fetched {len(content_pages)} news pages")
         
         # 5. use the last pipeline and extract contents. (title, content, url)
+        self._logger.info(f"Start parsing news pages")
         content_parser = self._parse_strategy_factory.create(
             rules.parsing_pipeline[1].parser)
-        parsed_content_results = []
-        for content_url, content_page in content_pages:
+        results = []
+        
+        for i, page in enumerate(content_pages):
+            self._logger.info(f"parsing {i}/{len(content_pages)}")
+            content_url, content_page = page
             if len(content_page) == 0:
-                print(f"failed to fetch url: {content_url}")
-            else:
-                parsed_contents = {content.name: content
-                                for content in content_parser.parse(
-                                content_page, rules.parsing_pipeline[1].parse_rules)}
-                
-                if any((len(parse_result.value) > 0
-                      for parse_result in parsed_contents.values())):
-                    parsed_contents['url'] = content_url
-                    parsed_content_results.append(parsed_contents)
+                self._logger.error(f"failed to fetch url: {content_url}")
+                continue
+            
+            parsed_contents = content_parser.parse(content_page, rules.parsing_pipeline[1].parse_rules)
+            content_dict = {
+                result.name: result.value for result in parsed_contents}
+            news = self._result_db_model.parse_obj(content_dict)
+            news.url = content_url
+            results.append(news)
             
         # 6. finally save results to db
-        result_dt = datetime.now()
-        results = [
-            self._result_db_model(
-                result_id=self._table_id_generator(result['title'].name),
-                name=result['title'].value,
-                description="",
-                data=result.values(),
-                create_dt=result_dt
-            )
-            for result in parsed_content_results
-        ]
-        await self._result_db_model.insert_many(results)
-        print("Done!")
+        if len(results) > 0:
+            self._logger.info(f"Saving results...")
+            await self._result_db_model.insert_many(results)
+            self._logger.info("Done!")
+        else:
+            self._logger.info("No new results retrieved in this run...")
 
 
 class BaiduCOVIDSpider(BaseSpiderService):
@@ -309,24 +333,24 @@ class BaiduCOVIDSpider(BaseSpiderService):
                  request_client: BaseRequestClient,
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
-                 result_db_model: Result,
+                 result_db_model: COVIDReport,
                  html_data_model: HTMLData,
-                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
                  process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
                  throttled_fetch: Callable = throttled,
+                 logger: Logger = getLogger(f"{__name__}.BaiduCOVIDSpider"),
                  **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
         self._html_data_model = html_data_model
-        self._table_id_generator = table_id_generator
         self._coroutine_runner = coroutine_runner
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
         self._throttled_fetch = throttled_fetch
+        self._logger = logger
         self._create_report_classifier()
 
     def _required_fields_included(self, 
@@ -398,6 +422,8 @@ class BaiduCOVIDSpider(BaseSpiderService):
             list(chain(*[rule.parse_rules for rule in rules.parsing_pipeline])),
             ['domestic_city', 'last_update', 'world', 'domestic', 'foreign_country'])
         
+        self._logger.info("Parameters are validated. Prepare crawling...")
+
         # use the first one as base url and ignore the rest
         base_url = urls[0]
         covid_report_urls = [base_url, f"{base_url}#tab4"]
@@ -410,6 +436,8 @@ class BaiduCOVIDSpider(BaseSpiderService):
                                   for city in cities
                                   if city_param_pattern.match(city)]
         
+        self._logger.info("Start crawling...")
+
         # create spiders from urls
         report_spiders = self._spider_class.create_from_urls(covid_report_urls, self._request_client)
         
@@ -418,6 +446,9 @@ class BaiduCOVIDSpider(BaseSpiderService):
             max_concurrency=rules.max_concurrency,
             tasks=[spider.fetch() for spider in report_spiders])
         
+        self._logger.info(f"Crawl completed. Fetched {len(report_pages)} results.")
+        self._logger.info(f"Start parsing results...")
+
         # create report parser and parse report
         parsed_reports = []
         parsing_pipelines = {
@@ -425,25 +456,28 @@ class BaiduCOVIDSpider(BaseSpiderService):
             for pipeline in rules.parsing_pipeline
         }
         # create parser by guessing its type
-        for url, raw_page in report_pages:
+        for i, page in enumerate(report_pages):
+            self._logger.info(f"Parsing {i}/{len(report_pages)} pages")
+            url, raw_page = page
             report_type = self._classify_report_type(url, raw_page)
             pipeline = parsing_pipelines[report_type]
             parser = self._parse_strategy_factory.create(pipeline.parser)
             parsed_result = parser.parse(raw_page, rules=pipeline.parse_rules)[0]
-            result_dt = datetime.now()
-            covid_report_summary = self._result_db_model(
-                result_id=self._table_id_generator(
-                    f"COVID-{parsed_result.value[report_type].value}-{parsed_result.value['last_update'].value}"),
-                name=f"{parsed_result.value[report_type].value}实时疫情报告",
-                description="新型冠状病毒肺炎疫情实时大数据报告",
-                data=parsed_result.value.values(),
-                create_dt=result_dt
-            )
+            result_dict = parsed_result.value_to_dict()
+            covid_report_summary = self._result_db_model.parse_obj(result_dict)
+            covid_report_summary.report_type = result_dict[report_type]
+            # covid_report_summary = self._result_db_model(
+            #     name=f"{parsed_result.value[report_type].value}实时疫情报告",
+            #     description="新型冠状病毒肺炎疫情实时大数据报告",
+            #     data=parsed_result.value.values(),
+            #     create_dt=result_dt
+            # )
+            self._logger.debug(f"transformed model: {covid_report_summary}")
             parsed_reports.append(covid_report_summary)
 
         # save reports to db
         await self._result_db_model.insert_many(parsed_reports)
-        print("Done!")
+        self._logger.info("Done!")
 
 
 
@@ -457,14 +491,14 @@ class WeatherSpiderService(BaseSpiderService):
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
                  crawling_strategy_factory: CrawlerContextFactory,
-                 result_db_model: Result,
+                 result_db_model: Union[Weather, AirQuality],
                  crawl_method: str = 'bfs_crawler',
                  link_finder: str = 'link_parser',
-                 table_id_generator: Callable = partial(uuid5, NAMESPACE_OID),
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
                  process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
                  throttled_fetch: Callable = throttled,
+                 logger: Logger = getLogger(f"{__name__}.WeatherSpiderService"),
                  **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
@@ -477,11 +511,12 @@ class WeatherSpiderService(BaseSpiderService):
                 parser_name=link_finder, base_url='')
         )
         self._result_db_model = result_db_model
-        self._table_id_generator = table_id_generator
+
         self._coroutine_runner = coroutine_runner
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
         self._throttled_fetch = throttled_fetch
+        self._logger = logger
 
     def _required_fields_included(self, 
                                   rules: List[ParseRule],
@@ -572,6 +607,8 @@ class WeatherSpiderService(BaseSpiderService):
             rules=list(chain(*[rule.parse_rules for rule in rules.parsing_pipeline])),
             fields_to_include=['province', 'city'])
         
+        self._logger.info("Parameters are validated. Prepare crawling...")
+
         self._crawler_context.start_url = urls[0]
 
         result_filter = self._get_weather_page_classifier()
@@ -586,6 +623,8 @@ class WeatherSpiderService(BaseSpiderService):
             end_time=rules.time_range.end_date
         )
 
+        self._logger.info("Start crawling...")
+
         weather_pages = await self._crawler_context.crawl(
             rules=rules.parsing_pipeline[0].parse_rules,
             url_filter_functions=[
@@ -595,6 +634,9 @@ class WeatherSpiderService(BaseSpiderService):
             max_depth=rules.max_depth,
             result_filter_func=result_filter
         )
+
+        self._logger.info(f"Crawl completed. Fetched {len(weather_pages)} results.")
+        self._logger.info(f"Start parsing results...")
         
         parsed_weather_history = []
         pipeline = rules.parsing_pipeline[1]
@@ -603,6 +645,7 @@ class WeatherSpiderService(BaseSpiderService):
             page_text = weather_page.page_src
             parsed_results = weather_parser.parse(
                 page_text, rules=pipeline.parse_rules)
+            
             weather_table_title = parsed_results[0]
             title = weather_table_title.value['title'].value
             province = weather_table_title.value['province'].value
@@ -617,20 +660,17 @@ class WeatherSpiderService(BaseSpiderService):
                     parsed_result.value = parsed_result.value.replace("\r\n ", "").replace(" ", "")
 
             result_dt = datetime.now()
-            for daily_weather in parsed_results:
-                weather_record = self._result_db_model(
-                    result_id=self._table_id_generator(
-                        f"{daily_weather.value['title'].value}-{result_dt}"),
-                    name=f"{daily_weather.value['title'].value}",
-                    description="天气历史数据",
-                    data=daily_weather.value.values(),
-                    create_dt=result_dt
-                )
+            for daily_weather in parsed_results[1:]:
+                self._logger.debug(f"Untransformed object: {daily_weather}")
+                # result_dict = {key: daily_weather.value[key].value for key in daily_weather.value}
+                weather_record = self._result_db_model.parse_obj(
+                    daily_weather.value_to_dict())
+                weather_record.create_dt = result_dt
+                self._logger.debug(f"transformed model: {weather_record}")
                 parsed_weather_history.append(weather_record)
 
         await self._result_db_model.insert_many(parsed_weather_history)
-        print(parsed_weather_history)
-        print("Done!")
+        self._logger.info("Crawl complete!")
 
 
 
@@ -743,109 +783,12 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        "http://www.tianqihoubao.com/aqi/"
+        # "https://voice.baidu.com/act/newpneumonia/newpneumonia",
+        # "https://voice.baidu.com/act/newpneumonia/newpneumonia#tab4"
+        "http://www.baidu.com/s?tn=news&ie=utf-8"
     ]
     print(urls)
 
-
-    AQI_CONFIG = ScrapeRules(
-        keywords=KeywordRules(
-            include=["shenzhen", 'guangzhou']),
-        max_depth=1,
-        max_concurrency=200,
-        time_range=TimeRange(
-            start_date=datetime(2021, 3, 1),
-            end_date=datetime(2021, 4, 1)
-        ),
-        url_patterns=['/aqi/\w+-\d{6}.html'],
-        parsing_pipeline=[
-            ParsingPipeline(
-                name="aqi_link_finder",
-                parser="link_parser",
-                parse_rules=[
-                    ParseRule(
-                        field_name="city_link",
-                        rule="//*[@id='content']/div[2]/dl[17]/dd/a|//*[@id='bd']/div[1]/div[3]/ul/li/a",
-                        rule_type="xpath"
-                    )
-                ]
-            ),
-            ParsingPipeline(
-                name="aqi_extractor",
-                parser="list_item_parser",
-                parse_rules=[
-                    ParseRule(
-                        field_name="title",
-                        rule="//*[@id='content']/h1",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="province",
-                        rule="//*[@id='mnav']/div[1]/a[3]",
-                        rule_type="xpath",
-                        slice_str=(0, 2)
-                    ),
-                    ParseRule(
-                        field_name="city",
-                        rule="//*[@id='content']/h1",
-                        rule_type="xpath",
-                        slice_str=(7, 9)
-                    ),
-                    ParseRule(
-                        field_name="date",
-                        rule="//tr/td[1]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="quality",
-                        rule="//tr/td[2]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="AQI",
-                        rule="//tr/td[3]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="AQI_rank",
-                        rule="//tr/td[4]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="PM2.5",
-                        rule="//tr/td[5]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="PM10",
-                        rule="//tr/td[6]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="SO2",
-                        rule="//tr/td[7]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="NO2",
-                        rule="//tr/td[8]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="Co",
-                        rule="//tr/td[9]",
-                        rule_type="xpath"
-                    ),
-                    ParseRule(
-                        field_name="O3",
-                        rule="//tr/td[10]",
-                        rule_type="xpath"
-                    )
-                ]
-            )
-        ]
-    )
-    
     loop = asyncio.get_event_loop()
     loop.run_until_complete(test_spider_services(
         db_client=db_client,
@@ -856,9 +799,9 @@ if __name__ == "__main__":
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
         crawling_strategy_factory=CrawlerContextFactory,
-        spider_service_class=WeatherSpiderService,
-        result_model_class=Result,
+        spider_service_class=BaiduNewsSpider,
+        result_model_class=News,
         html_model_class=HTMLData,
         test_urls=urls,
-        rules=AQI_CONFIG
+        rules=load_service_config("baidu_news")
     ))

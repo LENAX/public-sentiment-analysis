@@ -1,6 +1,6 @@
 from pydantic import BaseModel, parse
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Any, List
 from ...db import AsyncMongoCRUDBase
 from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
@@ -8,6 +8,8 @@ from uuid import UUID
 from enum import Enum
 
 class MongoModel(BaseModel, AsyncMongoCRUDBase):
+    """ Provides base for all other database models
+    """
 
     __collection__: str = ""
     __db__: AsyncIOMotorDatabase = None
@@ -78,7 +80,9 @@ class MongoModel(BaseModel, AsyncMongoCRUDBase):
                     exclude_unset=exclude_unset,
                     by_alias=by_alias)
             return data
-        elif type(obj) is UUID or isinstance(obj, Enum):
+        elif (type(obj) is UUID or
+              isinstance(obj, Enum) or
+              isinstance(obj, date)):
             return str(obj)
         elif hasattr(obj, "_ast"):
             return cls.todict(obj._ast(),

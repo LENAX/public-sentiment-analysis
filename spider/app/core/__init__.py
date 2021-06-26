@@ -1,5 +1,5 @@
 from .spider import (
-    BaseSpider, Spider, WebSpider
+    BaseSpider, Spider
 )
 from .crawling import (
     BaseCrawlingStrategy, CrawlerContext, BFSCrawling,
