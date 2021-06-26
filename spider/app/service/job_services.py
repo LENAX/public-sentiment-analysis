@@ -5,16 +5,22 @@ from .base_services import BaseJobService
 from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.triggers.base import BaseTrigger
 from apscheduler.job import Job as APJob
-from ..models.response_models import (
-    JobResponse, ResponseModel
-)
-from ..models.db_models import JobStatus, Job
+from ..models.db_models import Job
+from ..models.data_models import JobData
 from datetime import datetime, timedelta
 from ..enums import JobType, JobState
 from uuid import uuid4, UUID
 from datetime import datetime
 from bson.objectid import ObjectId
 from asyncio import Lock
+
+import logging
+from logging import Logger, getLogger
+
+logging.basicConfig()
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 TZInfo = TypeVar("TZInfo")
 Datetime = TypeVar("Datetime")
@@ -26,30 +32,43 @@ class AsyncJobService(BaseJobService):
     def __init__(self,
                  async_scheduler: BaseScheduler,
                  job_model: Job = Job,
-                 job_status_model: JobStatus = JobStatus,
+                 job_data_model: JobData = JobData,
                  oid_generator: ObjectId = ObjectId,
                  uuid_generator: Callable = uuid4,
                  datetime: Datetime = datetime,
-                 lock: Lock = Lock) -> None:
+                 lock: Lock = Lock,
+                 logger: Logger = getLogger(f"{__name__}.AsyncJobService")) -> None:
         self._async_scheduler = async_scheduler
         self._job_model = job_model
-        self._job_status_model = job_status_model
+        self._job_data_model = job_data_model
         self._oid_generator = oid_generator
         self._uuid_generator = uuid_generator
         self._datetime = datetime
         self._lock = lock() # is lock necessary?
+        self._logger = logger
 
     async def add_job(self, func: Callable,
-                  trigger: BaseTrigger = None, name: str = None,
-                  description: str = "", misfire_grace_time: int = None,
-                  coalesce: bool = False, max_instances: int = 1,
-                  next_run_time:str = None, jobstore: str = 'default',
-                  executor: str = 'default', replace_existing: bool = False,
-                  **trigger_args) -> JobResponse:
+                      trigger: BaseTrigger = None, name: str = None,
+                      description: str = "", misfire_grace_time: int = None,
+                      coalesce: bool = False, max_instances: int = 1,
+                      next_run_time:str = None, jobstore: str = 'default',
+                      executor: str = 'default', replace_existing: bool = False,
+                      **trigger_args) -> JobData:
+        """ Create a new job
+
+        Args:
+            func
+            name
+            description
+            trigger
+            
+        """
+        
         job_id = self._uuid_generator()
         # might be blocking under the hood...
         # TODO: run in a separate thread to avoid blocking the event loop
         try:
+            self._logger.info("Creating a new job")
             ap_job = self._async_scheduler.add_job(
                 func=func, trigger=trigger, id=str(job_id), name=name
             )
@@ -61,17 +80,15 @@ class AsyncJobService(BaseJobService):
                 current_state=JobState.WORKING,
                 next_run_time=ap_job.next_run_time
             )
+            self._logger.info("Saving to db...")
             await job.save()
-            create_dt = self._datetime.now()
-            return JobResponse.success(
-                        job_id=str(job_id),
-                        job=job,
-                        create_dt=create_dt,
-                        last_update=create_dt)
+            self._logger.info("Done!")
+            return self._job_data_model.from_db_model(job)
         except Exception as e:
-            return JobResponse.fail(status_code=500, message=str(e))
+            self._logger.error(f"{e}")
+            raise e
 
-    async def update_job(self, job_id: str, **changes) -> JobResponse:
+    async def update_job(self, job_id: str, **changes) -> None:
         if type(job_id) is not str:
             job_id = str(job_id)
         
@@ -81,14 +98,12 @@ class AsyncJobService(BaseJobService):
             updates = {key: changes[key] for key in changes if key in self._job_model.__fields__}
             await self._job_model.update_one(
                 filter={"job_id": job_id}, update=updates)
-            
-            return JobResponse.success(
-                    job_id=job_id,
-                    last_update=self._datetime.now())
         except IndexError:
-            return JobResponse.fail(status_code=404, message="Job not found")
+            self._logger.error(f"Job with id {job_id} is not found.")
+            raise IndexError("Job is not found")
         except Exception as e:
-            return JobResponse.fail(status_code=500, message=str(e))
+            self._logger.error(f"{e}")
+            raise e
 
     async def _update_next_run_time(self, job_id: str, 
                                     write_back_to_db: bool = False) -> Job:
@@ -110,10 +125,11 @@ class AsyncJobService(BaseJobService):
                              minute: Union[int, str] = None, second: Union[int, str] = None,
                              start_date: Union[datetime, str] = None,
                              end_date: Union[datetime, str] = None,
-                             timezone: Union[TZInfo, str] = None, **kwargs) -> JobResponse:
+                             timezone: Union[TZInfo, str] = None, **kwargs) -> JobData:
         if type(job_id) is not str:
             job_id = str(job_id)
 
+        self._logger.info(f"Reschedule job {job_id}")
         try:
             if trigger != 'cron':
                 self._async_scheduler.reschedule_job(job_id=job_id, trigger=trigger, **kwargs)
@@ -123,23 +139,28 @@ class AsyncJobService(BaseJobService):
                     week=week, day_of_week=day_of_week, hour=hour, minute=minute,
                     second=second, start_date=start_date, end_date=end_date, timezone=timezone)
             job = await self._update_next_run_time(job_id)
-            return JobResponse.success(job=job)
+            self._logger.info(f"Done!")
+            return self._job_data_model.from_db_model(job)
         except Exception as e:
-            return JobResponse.fail(status_code=500, message=str(e))
+            self._logger.error(f"{e}")
+            raise e
  
-    async def delete_job(self, job_id: str) -> JobResponse:
+    async def delete_job(self, job_id: str) -> None:
         if type(job_id) is not str:
             job_id = str(job_id)
 
+        self._logger.info(f"Delete job {job_id}")
         try:
             self._async_scheduler.remove_job(job_id)
             await self._job_model.delete_one({"job_id": job_id})
 
-            return JobResponse.success()
+            self._logger.info(f"Done!")
         except Exception as e:
-            return JobResponse.fail(status_code=500, message=str(e))
+            self._logger.error(f"{e}")
+            raise e
 
-    async def delete_jobs(self, job_ids: List[str]) -> JobResponse:
+    async def delete_jobs(self, job_ids: List[str]) -> None:
+        self._logger.info(f"Delete jobs {job_ids}")
         try:
             job_id_set = set(job_ids)
             ap_jobs_to_remove = []
@@ -147,14 +168,15 @@ class AsyncJobService(BaseJobService):
                 if job.id in job_id_set:
                     job.remove()
                     ap_jobs_to_remove.append(job)
-            query = {"job_id": {"$in": [job.id for job in ap_jobs_to_remove]}}
+            query = {"job_id": {"$in": [str(job.id) for job in ap_jobs_to_remove]}}
             await self._job_model.delete_many(query)
 
-            return JobResponse.success()
+            self._logger.info(f"Done!")
         except Exception as e:
-            return JobResponse.fail(status_code=500, message=str(e))
+            self._logger.error(f"{e}")
+            raise e
 
-    async def get_job(self, job_id: str) -> JobResponse:
+    async def get_job(self, job_id: str) -> JobData:
         if type(job_id) is not str:
             job_id = str(job_id)
 
@@ -163,25 +185,27 @@ class AsyncJobService(BaseJobService):
             job = await self._job_model.get_one({"job_id": job_id})
             job.next_run_time = ap_job.next_run_time
 
-            return JobResponse.success(
-                    job_id=job_id,
-                    job=job)
+            return self._job_data_model.from_db_model(job)
         except IndexError:
-            return JobResponse.fail(status_code=404, message="Job not found")
+            self._logger.error("Job is not found!")
+            raise IndexError("Job is not found!")
         except Exception as e:
-            return JobResponse.fail(status_code=500, message=str(e))
+            self._logger.error(f"{e}")
+            raise e
     
-    async def get_running_jobs(self) -> ResponseModel:
+    async def get_running_jobs(self) -> List[JobData]:
         try:
             ap_jobs = self._async_scheduler.get_jobs()
             query = {"job_id": {"$in": [job.id for job in ap_jobs]}}
             jobs = await self._job_model.get(query)
 
-            return ResponseModel.success(data=jobs)
+            return [self._job_data_model.from_db_model(job)
+                    for job in jobs]
         except Exception as e:
-            return ResponseModel.fail(status_code=500, message=str(e))
+            self._logger.error(f"{e}")
+            raise e
 
-    def start(self):
+    def start(self) -> None:
         self._async_scheduler.start()
 
 
@@ -257,9 +281,7 @@ if __name__ == "__main__":
         await asyncio.sleep(sleep_time)
         print("finished!")
 
-        
-
-
+    
     async def test_add_job(async_job_service: AsyncJobService, jobs: List[Callable]):
         # Pitfall! You should never create a local function as a job function
         # The apscheduler will not be able to resolve its caller.
@@ -269,15 +291,15 @@ if __name__ == "__main__":
         try:
             # test add
             for job_func in jobs:
-                response = await async_job_service.add_job(
+                job = await async_job_service.add_job(
                     func=job_func, trigger='interval', seconds=10)
-                logger.info(f"get response from async_job_service: {response}")
-                assert response.status_code == 200
+                logger.info(f"get response from async_job_service: {job}")
+                assert job is not None
             logger.info("Test adding passed!")
             print("****************\n")
         except AssertionError:
             logger.error(
-                f"Excepted 200 from response. Got {response.status_code} instead")
+                f"Excepted job not to be null.")
             print("****************\n")
 
     # get test
@@ -285,15 +307,15 @@ if __name__ == "__main__":
         print("\n****************")
         logger.info("Test getting jobs....")
         try:
-            resp = await async_job_service.get_running_jobs()
-            logger.debug(f"Added jobs are {resp.data}")
-            assert len(resp.data) == len(jobs)
+            running_jobs = await async_job_service.get_running_jobs()
+            logger.debug(f"Added jobs are {running_jobs}")
+            assert len(running_jobs) >= 0
             logger.info("Test get_jobs passed!")
             print("****************\n")
         except AssertionError:
             logger.error(f"Excepted add {len(jobs)} jobs. "
-                         f"Added {len(resp.data)} jobs instead.")
-            logger.debug(f"added_jobs: {resp.data}")
+                         f"Added {len(running_jobs)} jobs instead.")
+            logger.debug(f"added_jobs: {jobs}")
             print("****************\n")
     
     # update test
@@ -302,25 +324,25 @@ if __name__ == "__main__":
         logger.info("Test update job names and descriptions")
 
         try:
-            response = await async_job_service.get_running_jobs()
-            logger.debug(f"Added jobs are {response.data}")
+            running_jobs = await async_job_service.get_running_jobs()
+            logger.debug(f"Added jobs are {running_jobs}")
 
-            for job in response.data:
+            for job in running_jobs:
                 logger.debug(f"before update: {job}")
-                update_resp = await async_job_service.update_job(
+                await async_job_service.update_job(
                                         job.job_id,
                                         name=f"updated_{job.name}",
                                         description=f"updated_{job.description}")
-                assert update_resp.status_code == 200
-                updated_job = await async_job_service.get_job(job_id=update_resp.job_id)
-                assert updated_job.job.name.startswith("updated_")
-                assert updated_job.job.description.startswith("updated_")
+                assert len(running_jobs) > 0
+                updated_job = await async_job_service.get_job(job_id=job.job_id)
+                assert updated_job.name.startswith("updated_")
+                assert updated_job.description.startswith("updated_")
                 logger.info("Test update_jobs passed!")
                 print("****************\n")
         except AssertionError as e:
             logging.error("modification failed!")
             # logger.debug(f"added_jobs: {response}")
-            logger.debug(f"updated: {update_resp}")
+            logger.debug(f"updated: {updated_job}")
             print("****************\n")
             raise e
 
@@ -330,22 +352,22 @@ if __name__ == "__main__":
         logger.info("Test reschedule jobs")
 
         try:
-            response = await async_job_service.get_running_jobs()
-            logger.debug(f"Added jobs are {response.data}")
+            running_jobs = await async_job_service.get_running_jobs()
+            logger.debug(f"Added jobs are {running_jobs}")
 
-            for job in response.data:
+            for job in running_jobs:
                 logger.debug(f"before update: {job}")
                 logging.info(f"type job_id: {type(job.job_id)}")
-                update_resp = await async_job_service.reschedule_job(
+                updated_jobs = await async_job_service.reschedule_job(
                                         job.job_id, day_of_week='mon-fri',
                                         hour=random.randint(0, 11),
                                         minute=random.randint(1, 59))
-                assert update_resp.status_code == 200
-                logger.debug(f"updated job: {update_resp.job}!!!")
+                assert updated_jobs is not None
+                logger.debug(f"updated job: {updated_jobs}!!!")
                 logger.info("Test reschedule passed!")
         except AssertionError as e:
             logging.error("Reschedule failed!")
-            logger.debug(f"added_jobs: {update_resp}")
+            logger.debug(f"added_jobs: {updated_jobs}")
             print("****************\n")
             raise e
 
@@ -356,21 +378,20 @@ if __name__ == "__main__":
         logger.info("Test delete jobs")
 
         try:
-            response = await async_job_service.get_running_jobs()
-            logger.debug(f"Added jobs are {response.data}")
+            running_jobs = await async_job_service.get_running_jobs()
+            logger.debug(f"Added jobs are {running_jobs}")
 
-            for job in response.data:
-                delete_response = await async_job_service.delete_job(job_id=job.job_id)
-                assert delete_response.status_code == 200
+            for job in running_jobs:
+                await async_job_service.delete_job(job_id=job.job_id)
                 logger.debug(f"successfully deleted job {job.job_id}")
 
-            response = await async_job_service.get_running_jobs()
-            assert len(response.data) == 0
+            running_jobs = await async_job_service.get_running_jobs()
+            assert len(running_jobs) == 0
             logger.info("Test delete passed!")
             print("****************\n")
 
         except AssertionError:
-            logger.debug(f"added_jobs: {response}")
+            logger.debug(f"added_jobs: {running_jobs}")
             print("****************\n")
     
     async def wait_for_tasks(seconds):

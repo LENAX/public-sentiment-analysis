@@ -8,3 +8,4 @@ from .data_models import (
 from .spider_models import HTMLData, URL
 from .parser_models import ParseResult
 from .crawler_models import CrawlResult
+from .job_models import JobData

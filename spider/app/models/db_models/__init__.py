@@ -6,3 +6,4 @@ from .air_quality import AirQuality
 from .covid_report import COVIDReport
 from .news import News
 from .weather import Weather
+from .mongo_model import MongoModel

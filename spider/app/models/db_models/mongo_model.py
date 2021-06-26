@@ -8,6 +8,8 @@ from uuid import UUID
 from enum import Enum
 
 class MongoModel(BaseModel, AsyncMongoCRUDBase):
+    """ Provides base for all other database models
+    """
 
     __collection__: str = ""
     __db__: AsyncIOMotorDatabase = None
