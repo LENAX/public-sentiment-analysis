@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from ..models.data_models import URL, DataModel
 from typing import List, Any, Callable
+from pydantic import BaseModel
+from ..models.request_models import QueryArgs
 
 class BaseSpiderService(ABC):
     """ Defines common interface for spider services.
@@ -11,24 +13,40 @@ class BaseSpiderService(ABC):
         return NotImplemented
 
 
-class BaseCollectionService(ABC):
-    """ Provides the common interface for accessing data in a collection
+class BaseCRUDService(ABC):
+    """ Provides the common interface for doing CRUD
     """
     @abstractmethod
-    def add(self, data: DataModel) -> Any:
+    def add_one(self, data: BaseModel) -> BaseModel:
         return NotImplemented
 
     @abstractmethod
-    def get(self, query_condition: dict) -> DataModel:
+    def add_many(self, data_list: List[BaseModel]) -> List[BaseModel]:
         return NotImplemented
 
     @abstractmethod
-    def update(self, data: DataModel) -> Any:
+    def get_one(self, id: str) -> BaseModel:
         return NotImplemented
 
     @abstractmethod
-    def delete(self, query_condition: dict) -> DataModel:
+    def get_many(self, query: QueryArgs) -> List[BaseModel]:
         return NotImplemented
+
+    @abstractmethod
+    def update_one(self, id: str, update_data: BaseModel) -> None:
+        pass
+
+    @abstractmethod
+    def update_many(self, query: QueryArgs, data_list: List[BaseModel]) -> None:
+        pass
+
+    @abstractmethod
+    def delete_one(self, id: str) -> None:
+        pass
+
+    @abstractmethod
+    def delete_many(self, query: QueryArgs) -> None:
+        pass
 
 
 class BaseJobService(ABC):
