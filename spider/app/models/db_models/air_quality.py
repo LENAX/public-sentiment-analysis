@@ -13,7 +13,7 @@ class AirQuality(MongoModel):
 
     id: PydanticObjectId = Field(
         default_factory=lambda: ObjectId())
-    air_quality: UUID = Field(
+    air_quality_id: UUID = Field(
         default_factory=lambda: uuid5(
             NAMESPACE_OID, f"AQ_Object_{datetime.now().timestamp()}"))
 

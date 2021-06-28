@@ -14,7 +14,7 @@ class Weather(MongoModel):
 
     id: PydanticObjectId = Field(
         default_factory=lambda: ObjectId())
-    weather: UUID = Field(
+    weather_id: UUID = Field(
         default_factory=lambda: uuid5(
             NAMESPACE_OID, f"Weather_Object_{datetime.now().timestamp()}"))
     

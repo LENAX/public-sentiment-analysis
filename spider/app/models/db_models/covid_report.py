@@ -15,7 +15,7 @@ class COVIDReport(MongoModel):
 
     id: PydanticObjectId = Field(
         default_factory=lambda: ObjectId())
-    covid_report: UUID = Field(
+    covid_report_id: UUID = Field(
         default_factory=lambda: uuid5(NAMESPACE_OID, f"News_Object_{datetime.now().timestamp()}"))
     
     report_type: str = ""

@@ -7,7 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
 from uuid import UUID
 from enum import Enum
 
-class MongoModel(BaseModel, AsyncMongoCRUDBase):
+class MongoModel(BaseModel):
     """ Provides base for all other database models
     """
 
