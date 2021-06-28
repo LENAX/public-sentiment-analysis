@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple
+from typing import Optional, List, Union
 from pydantic import BaseModel
 from datetime import date, datetime
 from ...enums import ContentType, JobType, Parser, ParseRuleType
@@ -113,3 +113,15 @@ class ResultQuery(BaseModel):
     keywords: Optional[List[str]]
     start_dt: Optional[datetime]
     end_dt: Optional[datetime]
+
+
+class QueryArgs(BaseModel):
+    """ Defines the query parameters for crud operations
+    """
+    id: Optional[Union[str, int]]
+    page: Optional[int] = 1
+    page_size: Optional[int] = 10
+    field: Optional[str] = ""
+    start_dt: Optional[Union[date, datetime]]
+    end_dt: Optional[Union[date, datetime]]
+
