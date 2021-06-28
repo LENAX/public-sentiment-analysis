@@ -13,39 +13,39 @@ class BaseSpiderService(ABC):
         return NotImplemented
 
 
-class BaseCRUDService(ABC):
+class BaseAsyncCRUDService(ABC):
     """ Provides the common interface for doing CRUD
     """
     @abstractmethod
-    def add_one(self, data: BaseModel) -> BaseModel:
+    async def add_one(self, data: BaseModel) -> BaseModel:
         return NotImplemented
 
     @abstractmethod
-    def add_many(self, data_list: List[BaseModel]) -> List[BaseModel]:
+    async def add_many(self, data_list: List[BaseModel]) -> List[BaseModel]:
         return NotImplemented
 
     @abstractmethod
-    def get_one(self, id: str) -> BaseModel:
+    async def get_one(self, id: str) -> BaseModel:
         return NotImplemented
 
     @abstractmethod
-    def get_many(self, query: QueryArgs) -> List[BaseModel]:
+    async def get_many(self, query: QueryArgs) -> List[BaseModel]:
         return NotImplemented
 
     @abstractmethod
-    def update_one(self, id: str, update_data: BaseModel) -> None:
+    async def update_one(self, id: str, update_data: BaseModel) -> None:
         pass
 
     @abstractmethod
-    def update_many(self, query: QueryArgs, data_list: List[BaseModel]) -> None:
+    async def update_many(self, query: QueryArgs, data_list: List[BaseModel]) -> None:
         pass
 
     @abstractmethod
-    def delete_one(self, id: str) -> None:
+    async def delete_one(self, id: str) -> None:
         pass
 
     @abstractmethod
-    def delete_many(self, query: QueryArgs) -> None:
+    async def delete_many(self, query: QueryArgs) -> None:
         pass
 
 

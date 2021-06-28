@@ -1,7 +1,7 @@
 from pydantic import BaseModel, parse
 from bson import ObjectId
 from datetime import datetime, date
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Sequence, Union
 from ...db import AsyncMongoCRUDBase
 from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
 from uuid import UUID
@@ -38,13 +38,13 @@ class MongoModel(BaseModel):
         self.__db__ = db_client_instance
 
     @classmethod
-    def from_mongo(cls, data: dict):
+    def from_mongo(cls, data: dict) -> Union["MongoModel", None]:
         """We must convert _id into "id". """
         if not data:
-            return data
+            return None
         id = data.pop('_id', None)
         parsed = cls(**dict(data))
-        parsed.id = id
+        setattr(parsed, "id", id)
         return parsed
 
     def mongo(self, **kwargs):
@@ -68,7 +68,7 @@ class MongoModel(BaseModel):
         return parsed
 
     @classmethod
-    def todict(cls, obj, classkey=None, **kwargs):
+    def todict(cls, obj, classkey=None, **kwargs) -> dict:
         exclude_unset = kwargs.pop('exclude_unset', True)
         by_alias = kwargs.pop('by_alias', True)
 
@@ -103,32 +103,40 @@ class MongoModel(BaseModel):
                     by_alias=by_alias) for v in obj]
         else:
             return obj
+
+    @classmethod
+    def parse_many(cls, obj_list: List[BaseModel]) -> List["MongoModel"]:
+        try:
+            parsed_models = [cls.parse_obj(model_instance) for model_instance in obj_list]
+            return parsed_models
+        except Exception as e:
+            raise e
     
     @classmethod
-    async def insert_many(cls, data: List[BaseModel], **kwargs):
+    async def insert_many(cls, data: List["MongoModel"], **kwargs):
         try:
             await cls.db[cls.__collection__].insert_many([d.mongo() for d in data])
         except Exception as e:
             print(e)
 
     @classmethod
-    async def get(cls, query: dict) -> List[object]:
+    async def get(cls, query: dict) -> List["MongoModel"]:
         try:
             query_result = cls.db[cls.__collection__].find(query)
             result = [cls.from_mongo(data) async for data in query_result]
             return result
         except AttributeError as e:
-            print(e("You must set db instance before getting any data"))
-            return []
+            print("You must set db instance before getting any data")
+            raise e
 
     @classmethod
-    async def get_one(cls, query: dict) -> object:
+    async def get_one(cls, query: dict) -> "MongoModel":
         try:
             result = await cls.db[cls.__collection__].find_one(query)
             return cls.from_mongo(result)
         except AttributeError as e:
-            print(e("You must set db instance before getting any data"))
-            return []
+            print("You must set db instance before getting any data")
+            raise e
 
     @classmethod
     async def delete_many(cls, query: dict) -> None:
@@ -138,8 +146,8 @@ class MongoModel(BaseModel):
                 print(
                     f"Successfully deleted {delete_result.deleted_count} records.")
         except AttributeError as e:
-            print(e("You must set db instance before getting any data"))
-            return []
+            print("You must set db instance before getting any data")
+            raise e
 
     @classmethod
     async def delete_one(cls, query: dict) -> None:
@@ -149,8 +157,8 @@ class MongoModel(BaseModel):
                 print(
                     f"Successfully deleted {delete_result.deleted_count} records.")
         except AttributeError as e:
-            print(e("You must set db instance before getting any data"))
-            return []
+            print("You must set db instance before getting any data")
+            raise e
 
     @classmethod
     async def update_many(cls, filter: dict, update: dict) -> None:
@@ -161,8 +169,8 @@ class MongoModel(BaseModel):
                     f"Successfully matched {update_result.matched_count}"
                     f" and updated {update_result.modified_count} records.")
         except AttributeError as e:
-            print(e("You must set db instance before getting any data"))
-            return []
+            print("You must set db instance before getting any data")
+            raise e
 
     @classmethod
     async def update_one(cls, filter: dict, update: dict) -> None:
@@ -173,8 +181,8 @@ class MongoModel(BaseModel):
                     f"Successfully matched {update_result.matched_count}"
                     f" and updated {update_result.modified_count} records.")
         except AttributeError as e:
-            print(e("You must set db instance before getting any data"))
-            return []
+            print("You must set db instance before getting any data")
+            raise e
 
     async def save(self):
         try:
