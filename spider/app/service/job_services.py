@@ -1,17 +1,12 @@
-from spider.app import db
 from typing import List, Any, Callable, Union, TypeVar
-from collections.abc import Coroutine
 from .base_services import BaseJobService
 from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.triggers.base import BaseTrigger
 from apscheduler.job import Job as APJob
 from ..models.db_models import Job
 from ..models.data_models import JobData
-from datetime import datetime, timedelta
-from ..enums import JobType, JobState
-from uuid import uuid4, UUID
+from ..enums import JobState
 from datetime import datetime
-from bson.objectid import ObjectId
 from asyncio import Lock
 
 import logging
@@ -33,16 +28,12 @@ class AsyncJobService(BaseJobService):
                  async_scheduler: BaseScheduler,
                  job_model: Job = Job,
                  job_data_model: JobData = JobData,
-                 oid_generator: ObjectId = ObjectId,
-                 uuid_generator: Callable = uuid4,
                  datetime: Datetime = datetime,
                  lock: Lock = Lock,
                  logger: Logger = getLogger(f"{__name__}.AsyncJobService")) -> None:
         self._async_scheduler = async_scheduler
         self._job_model = job_model
         self._job_data_model = job_data_model
-        self._oid_generator = oid_generator
-        self._uuid_generator = uuid_generator
         self._datetime = datetime
         self._lock = lock() # is lock necessary?
         self._logger = logger
