@@ -61,15 +61,16 @@ class WeatherService(BaseAsyncCRUDService):
     async def get_one(self, id: str) -> WeatherData:
         try:
             weather_record = await self._weather_db_model.get_one({"weather_id": id})
+            self._logger.info(f"Retrieved record: {weather_record}")
             return self._weather_data_model.from_db_model(weather_record)
         except Exception as e:
             self._logger.error(
                 f"Fail to retrieve weather record of id {id}", exc_info=True)
             raise e
 
-    async def get_many(self, query: QueryArgs) -> List[WeatherData]:   # type: ignore[override]
+    async def get_many(self, query: dict) -> List[WeatherData]: # type: ignore[override]
         try:
-            weather_record = await self._weather_db_model.get(query.dict(exclude_unset=True))
+            weather_record = await self._weather_db_model.get(query)
             return [self._weather_data_model.from_db_model(record)
                     for record in weather_record]
         except Exception as e:
@@ -85,6 +86,9 @@ class WeatherService(BaseAsyncCRUDService):
             self._logger.error(
                 f"Fail to update weather record of id {id}", exc_info=True)
             raise e
+        
+    async def update_many(self, query: dict, data_list: List[WeatherData]) -> None:  # type: ignore[override]
+        pass
 
     async def delete_one(self, id: str) -> None:
         try:
@@ -94,9 +98,9 @@ class WeatherService(BaseAsyncCRUDService):
                 f"Fail to delete weather record of id {id}", exc_info=True)
             raise e
 
-    async def delete_many(self, query: QueryArgs) -> None:
+    async def delete_many(self, query: dict) -> None:
         try:
-            await self._weather_db_model.delete_many(query.dict(exclude_unset=True))
+            await self._weather_db_model.delete_many(query)
         except Exception as e:
             self._logger.error(
                 f"Fail to delete weather records given query {query}", exc_info=True)

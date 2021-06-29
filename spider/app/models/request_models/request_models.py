@@ -122,6 +122,7 @@ class QueryArgs(BaseModel):
     page: Optional[int] = 1
     page_size: Optional[int] = 10
     field: Optional[str] = ""
+    query_expression: Optional[dict]
     start_dt: Optional[Union[date, datetime]]
     end_dt: Optional[Union[date, datetime]]
 

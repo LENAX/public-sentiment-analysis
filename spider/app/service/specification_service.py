@@ -71,9 +71,9 @@ class SpecificationService(BaseAsyncCRUDService):
             raise e
 
     # type: ignore[override]
-    async def get_many(self, query: QueryArgs) -> Coroutine[Any, Any, List[SpecificationData]]:
+    async def get_many(self, query: dict) -> Coroutine[Any, Any, List[SpecificationData]]:
         try:
-            job_specification_record = await self._job_specification_db_model.get(query.dict(exclude_unset=True))
+            job_specification_record = await self._job_specification_db_model.get(query)
             return [self._job_specification_data_model.from_db_model(record)
                     for record in job_specification_record]
         except Exception as e:
@@ -81,8 +81,7 @@ class SpecificationService(BaseAsyncCRUDService):
                 f"Fail to retrieve job_specification records given query {query}", exc_info=True)
             raise e
 
-    # type: ignore[override]
-    async def update_one(self, id: str, update_data: SpecificationData) -> None:
+    async def update_one(self, id: str, update_data: SpecificationData) -> None:  # type: ignore[override]
         try:
             await self._job_specification_db_model.update_one(
                 {"job_specification_id": id}, update_data.dict(exclude_unset=True))
@@ -90,6 +89,10 @@ class SpecificationService(BaseAsyncCRUDService):
             self._logger.error(
                 f"Fail to update job_specification record of id {id}", exc_info=True)
             raise e
+        
+        
+    async def update_many(self, query: dict, data_list: List[SpecificationData]) -> None: # type: ignore[override]
+        pass
 
     async def delete_one(self, id: str) -> None:
         try:
@@ -99,9 +102,9 @@ class SpecificationService(BaseAsyncCRUDService):
                 f"Fail to delete job_specification record of id {id}", exc_info=True)
             raise e
 
-    async def delete_many(self, query: QueryArgs) -> None:
+    async def delete_many(self, query: dict) -> None:
         try:
-            await self._job_specification_db_model.delete_many(query.dict(exclude_unset=True))
+            await self._job_specification_db_model.delete_many(query)
         except Exception as e:
             self._logger.error(
                 f"Fail to delete job_specification records given query {query}", exc_info=True)

@@ -1,5 +1,5 @@
 from .mongo_model import MongoModel
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Union
 from datetime import date, datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson.objectid import ObjectId
@@ -9,7 +9,7 @@ from uuid import UUID, uuid5, NAMESPACE_OID
 from dateutil import parser
 import re
 
-cn_dt_pattern = re.compile("\d+年\d+月\d+日")
+cn_dt_pattern = re.compile(r"\d+年\d+月\d+日")
 
 class Weather(MongoModel):
     __collection__: str = "Weather"
@@ -24,7 +24,7 @@ class Weather(MongoModel):
     title: str = ""
     province: str = ""
     city: str = ""
-    date: Optional[date]
+    date: Optional[Union[date, datetime, str]]
     weather: str = ""
     temperature: str = ""
     wind: str = ""
@@ -38,13 +38,13 @@ class Weather(MongoModel):
     tenant_id: Optional[UUID]
 
     @validator("date", pre=True)
-    def parse_publish_time(cls, value):
+    def parse_date(cls, value):
         try:
-            if len(value) == 0:
+            if value is None or len(value) == 0:
                 return None
             elif cn_dt_pattern.match(value):
                 year, month, day = [int(x)
-                                    for x in re.findall("\d+", value)]
+                                    for x in re.findall(r"\d+", value)]
                 return datetime(year, month, day)
             else:
                 return parser.parse(value)

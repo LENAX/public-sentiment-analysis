@@ -785,7 +785,7 @@ if __name__ == "__main__":
         # "https://voice.baidu.com/act/newpneumonia/newpneumonia",
         # "https://voice.baidu.com/act/newpneumonia/newpneumonia#tab4"
         # "http://www.baidu.com/s?tn=news&ie=utf-8",
-        "http://www.tianqihoubao.com/lishi/"
+        "http://www.tianqihoubao.com/aqi"
     ]
     print(urls)
 
@@ -795,13 +795,13 @@ if __name__ == "__main__":
         db_name=use_db,
         headers=headers.dict(),
         cookies=cookies,
-        client_session_class=RequestClient,
+        client_session_class=AsyncBrowserRequestClient,
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
         crawling_strategy_factory=CrawlerContextFactory,
         spider_service_class=WeatherSpiderService,
-        result_model_class=Weather,
+        result_model_class=AirQuality,
         html_model_class=HTMLData,
         test_urls=urls,
-        rules=load_service_config("weather_config")
+        rules=load_service_config("aqi_config")
     ))
