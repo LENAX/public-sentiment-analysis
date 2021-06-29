@@ -3,11 +3,12 @@ from .base_services import BaseJobService
 from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.triggers.base import BaseTrigger
 from apscheduler.job import Job as APJob
-from ..models.db_models import Job
+from ..models.db_models import Job, Specification
 from ..models.data_models import JobData
 from ..enums import JobState
 from datetime import datetime
 from asyncio import Lock
+from ..exceptions import ResourceNotFound
 
 import logging
 from logging import Logger, getLogger
@@ -19,6 +20,7 @@ logger.setLevel(logging.DEBUG)
 
 TZInfo = TypeVar("TZInfo")
 Datetime = TypeVar("Datetime")
+SpecificationClass = TypeVar("SpecificationClass")
 
 class AsyncJobService(BaseJobService):
     """ Provides async job management using APScheduler
@@ -28,17 +30,19 @@ class AsyncJobService(BaseJobService):
                  async_scheduler: BaseScheduler,
                  job_model: Job = Job,
                  job_data_model: JobData = JobData,
+                 specification_model: SpecificationClass = Specification,
                  datetime: Datetime = datetime,
                  lock: Lock = Lock,
                  logger: Logger = getLogger(f"{__name__}.AsyncJobService")) -> None:
         self._async_scheduler = async_scheduler
         self._job_model = job_model
         self._job_data_model = job_data_model
+        self._specification_model = specification_model
         self._datetime = datetime
         self._lock = lock() # is lock necessary?
         self._logger = logger
 
-    async def add_job(self, func: Callable,
+    async def add_job(self, func: Callable, specification_id: str = None,
                       trigger: BaseTrigger = None, name: str = None,
                       description: str = "", misfire_grace_time: int = None,
                       coalesce: bool = False, max_instances: int = 1,
@@ -55,22 +59,23 @@ class AsyncJobService(BaseJobService):
             
         """
         
-        job_id = self._uuid_generator()
         # might be blocking under the hood...
         # TODO: run in a separate thread to avoid blocking the event loop
         try:
             self._logger.info("Creating a new job")
-            ap_job = self._async_scheduler.add_job(
-                func=func, trigger=trigger, id=str(job_id), name=name
-            )
+            job_name = f"{func.__name__}" if name is None else name
+            
             job = Job(
-                id=self._oid_generator(),
-                job_id=job_id,
-                name=ap_job.name,
+                name=job_name,
                 description=description,
                 current_state=JobState.WORKING,
-                next_run_time=ap_job.next_run_time
+                spec_id=specification_id
             )
+            ap_job = self._async_scheduler.add_job(
+                func=func, trigger=trigger, id=str(job.job_id), name=name
+            )
+            job_next_run = ap_job.next_run_time if next_run_time is None else next_run_time
+            job.next_run_time = job_next_run
             self._logger.info("Saving to db...")
             await job.save()
             self._logger.info("Done!")
@@ -79,23 +84,63 @@ class AsyncJobService(BaseJobService):
             self._logger.error(f"{e}")
             raise e
 
-    async def update_job(self, job_id: str, **changes) -> None:
+    async def update_job(self,
+                         job_id: str,
+                         func: Callable = None,
+                         specification_id: str = None,
+                         **changes) -> None:
         if type(job_id) is not str:
             job_id = str(job_id)
+            
+        if func is not None:
+            changes['func'] = func
+        
+        if specification_id is not None:
+            changes['spec_id'] = specification_id
         
         try:
             ap_job = self._async_scheduler.get_job(job_id)
+            
+            if ap_job is None:
+                resource_not_found_error = ResourceNotFound(
+                    f"Job with id {job_id} does not exist.")
+                self._logger.error(f"{resource_not_found_error}")
+                raise resource_not_found_error
+            
             ap_job.modify(**{key: changes[key] for key in changes if hasattr(ap_job, key)})
             updates = {key: changes[key] for key in changes if key in self._job_model.__fields__}
             await self._job_model.update_one(
                 filter={"job_id": job_id}, update=updates)
-        except IndexError:
+        except AttributeError:
             self._logger.error(f"Job with id {job_id} is not found.")
             raise IndexError("Job is not found")
         except Exception as e:
             self._logger.error(f"{e}")
             raise e
-
+        
+    async def apply_specification(self, job_id: str, specification_id: str) -> None:
+        if type(specification_id) is not str:
+            specification_id = str(specification_id)
+            
+        if type(job_id) is not str:
+            job_id = str(job_id)
+            
+        try:
+            specification = await self._specification_model.get_one(
+                {"specification_id": specification_id})
+            
+            if specification is None:
+                resource_not_found_error = ResourceNotFound(
+                    f"Specification with id {specification_id} does not exist.")
+                self._logger.error(f"{resource_not_found_error}")
+                raise resource_not_found_error
+            
+            await self._job_model.update_one(
+                filter={"job_id": job_id}, update={"spec_id": specification_id})
+        except Exception as e:
+            self._logger.error(f"{e}")
+            raise e
+        
     async def _update_next_run_time(self, job_id: str, 
                                     write_back_to_db: bool = False) -> Job:
         """ Update job's next run time from apscheduler's job

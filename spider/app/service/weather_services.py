@@ -16,14 +16,16 @@ logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT, datefmt=DATE_FORMAT)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+WeatherClass = TypeVar("WeatherClass")
+WeatherDataClass = TypeVar("WeatherDataClass")
 
 class WeatherService(BaseAsyncCRUDService):
     """ Provides Weather Data Access
     """
 
     def __init__(self,  
-                 weather_db_model: Weather = Weather,
-                 weather_data_model: WeatherData = WeatherData,
+                 weather_db_model: WeatherClass = Weather,
+                 weather_data_model: WeatherDataClass = WeatherData,
                  logger: Logger = getLogger(f"{__name__}.WeatherService")):
         self._weather_db_model = weather_db_model
         self._weather_data_model = weather_data_model

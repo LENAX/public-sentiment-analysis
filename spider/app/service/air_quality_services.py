@@ -1,4 +1,4 @@
-from typing import List, Any, Coroutine
+from typing import List, Any, Coroutine, TypeVar
 from .base_services import BaseAsyncCRUDService
 from ..models.db_models import AirQuality
 from ..models.data_models import AirQualityData
@@ -17,14 +17,16 @@ logging.basicConfig(level=logging.DEBUG,
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+AirQualityClass = TypeVar("AirQualityClass")
+AirQualityDataClass = TypeVar("AirQualityDataClass")
 
 class AirQualityService(BaseAsyncCRUDService):
     """ Provides AirQuality Data Access
     """
 
     def __init__(self,
-                 air_quality_db_model: AirQuality = AirQuality,
-                 air_quality_data_model: AirQualityData = AirQualityData,
+                 air_quality_db_model: AirQualityClass = AirQuality,
+                 air_quality_data_model: AirQualityDataClass = AirQualityData,
                  logger: Logger = getLogger(f"{__name__}.AirQualityService")):
         self._air_quality_db_model = air_quality_db_model
         self._air_quality_data_model = air_quality_data_model

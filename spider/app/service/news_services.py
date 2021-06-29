@@ -30,8 +30,7 @@ class NewsService(BaseAsyncCRUDService):
         self._news_data_model = news_data_model
         self._logger = logger
 
-    # type: ignore[override]
-    async def add_one(self, data: NewsData) -> NewsData:
+    async def add_one(self, data: NewsData) -> NewsData:  # type: ignore[override]
         """ Add a new news record
 
         Args:

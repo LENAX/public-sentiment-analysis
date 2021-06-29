@@ -97,8 +97,14 @@ class JobType(str, Enum):
     BASIC_PAGE_SCRAPING: only scrape the provided urls and return the html of those urls,
     SEARCH_RESULT_AGGREGATION: perform searches on search engines or general search page and retrieve their results,
     WEB_CRAWLING: Start from seed urls, follow all links available.
+    
+    "basic_page_scraping": HTMLSpiderService,
+    "baidu_news_scraping": BaiduNewsSpider,
+    "baidu_covid_report": BaiduCOVIDSpider,
+    "weather_report": WeatherSpiderService
     """
     BASIC_PAGE_SCRAPING: str = 'basic_page_scraping'
-    SEARCH_RESULT_AGGREGATION: str = 'search_result_aggregation'
-    WEB_CRAWLING: str = 'web_crawling'
+    COVID_REPORT: str = 'baidu_covid_report'
     BAIDU_NEWS_SCRAPING: str = 'baidu_news_scraping'
+    WEATHER_REPORT: str = 'weather_report'
+    AIR_QUALITY_REPORT: str = 'air_quality'

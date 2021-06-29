@@ -49,8 +49,8 @@ class COVIDReportService(BaseAsyncCRUDService):
                 "Fail to create a new covid_report record", exc_info=True)
             raise e
 
-    # type: ignore[override]
-    async def add_many(self, data_list: Coroutine[Any, Any, List[COVIDReportData]]) -> Coroutine[Any, Any, List[COVIDReportData]]:
+
+    async def add_many(self, data_list: Coroutine[Any, Any, List[COVIDReportData]]) -> Coroutine[Any, Any, List[COVIDReportData]]: # type: ignore[override]
         try:
             new_covid_report_records = self._covid_report_db_model.parse_many(
                 data_list)
@@ -70,8 +70,7 @@ class COVIDReportService(BaseAsyncCRUDService):
                 f"Fail to retrieve covid_report record of id {id}", exc_info=True)
             raise e
 
-    # type: ignore[override]
-    async def get_many(self, query: QueryArgs) -> Coroutine[Any, Any, List[COVIDReportData]]:
+    async def get_many(self, query: QueryArgs) -> Coroutine[Any, Any, List[COVIDReportData]]: # type: ignore[override]
         try:
             covid_report_record = await self._covid_report_db_model.get(query.dict(exclude_unset=True))
             return [self._covid_report_data_model.from_db_model(record)
@@ -81,8 +80,7 @@ class COVIDReportService(BaseAsyncCRUDService):
                 f"Fail to retrieve covid_report records given query {query}", exc_info=True)
             raise e
 
-    # type: ignore[override]
-    async def update_one(self, id: str, update_data: COVIDReportData) -> None:
+    async def update_one(self, id: str, update_data: COVIDReportData) -> None:  # type: ignore[override]
         try:
             await self._covid_report_db_model.update_one(
                 {"covid_report_id": id}, update_data.dict(exclude_unset=True))
@@ -91,7 +89,7 @@ class COVIDReportService(BaseAsyncCRUDService):
                 f"Fail to update covid_report record of id {id}", exc_info=True)
             raise e
 
-    async def delete_one(self, id: str) -> None:
+    async def delete_one(self, id: str) -> None:  # type: ignore[override]
         try:
             await self._covid_report_db_model.delete_one({"covid_report_id": id})
         except Exception as e:
@@ -99,7 +97,7 @@ class COVIDReportService(BaseAsyncCRUDService):
                 f"Fail to delete covid_report record of id {id}", exc_info=True)
             raise e
 
-    async def delete_many(self, query: QueryArgs) -> None:
+    async def delete_many(self, query: QueryArgs) -> None: # type: ignore[override]
         try:
             await self._covid_report_db_model.delete_many(query.dict(exclude_unset=True))
         except Exception as e:

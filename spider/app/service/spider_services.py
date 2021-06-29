@@ -680,7 +680,8 @@ class SpiderFactory(BaseServiceFactory):
         "basic_page_scraping": HTMLSpiderService,
         "baidu_news_scraping": BaiduNewsSpider,
         "baidu_covid_report": BaiduCOVIDSpider,
-        "weather_report": WeatherSpiderService
+        "weather_report": WeatherSpiderService,
+        "air_quality": WeatherSpiderService
     }
     
     @classmethod
