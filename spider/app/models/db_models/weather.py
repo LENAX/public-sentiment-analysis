@@ -4,12 +4,15 @@ from datetime import date, datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson.objectid import ObjectId
 from ..extended_types import PydanticObjectId
-from pydantic import Field
+from pydantic import Field, validator
 from uuid import UUID, uuid5, NAMESPACE_OID
+from dateutil import parser
+import re
 
+cn_dt_pattern = re.compile("\d+年\d+月\d+日")
 
 class Weather(MongoModel):
-    __collection__: str = "AirQuality"
+    __collection__: str = "Weather"
     __db__: AsyncIOMotorDatabase
 
     id: PydanticObjectId = Field(
@@ -21,13 +24,30 @@ class Weather(MongoModel):
     title: str = ""
     province: str = ""
     city: str = ""
-    date: date
+    date: Optional[date]
     weather: str = ""
     temperature: str = ""
     wind: str = ""
 
     remark: str = ""
+    create_dt: datetime= Field(
+        default_factory=lambda:datetime.now())
     job_id: Optional[UUID]
     user_id: Optional[UUID]
     project_id: Optional[UUID]
     tenant_id: Optional[UUID]
+
+    @validator("date", pre=True)
+    def parse_publish_time(cls, value):
+        try:
+            if len(value) == 0:
+                return None
+            elif cn_dt_pattern.match(value):
+                year, month, day = [int(x)
+                                    for x in re.findall("\d+", value)]
+                return datetime(year, month, day)
+            else:
+                return parser.parse(value)
+        except IndexError:
+            print(f"Parsing datetime failed. value={value}")
+            return datetime.now()

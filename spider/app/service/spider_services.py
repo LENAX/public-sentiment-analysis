@@ -659,13 +659,11 @@ class WeatherSpiderService(BaseSpiderService):
                 for parsed_result in row_values.values():
                     parsed_result.value = parsed_result.value.replace("\r\n ", "").replace(" ", "")
 
-            result_dt = datetime.now()
             for daily_weather in parsed_results[1:]:
                 self._logger.debug(f"Untransformed object: {daily_weather}")
                 # result_dict = {key: daily_weather.value[key].value for key in daily_weather.value}
                 weather_record = self._result_db_model.parse_obj(
                     daily_weather.value_to_dict())
-                weather_record.create_dt = result_dt
                 self._logger.debug(f"transformed model: {weather_record}")
                 parsed_weather_history.append(weather_record)
 
@@ -776,7 +774,7 @@ if __name__ == "__main__":
     headers = RequestHeader(
         accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-        cookie=str(cookies))
+        )
     use_db = 'spiderDB'
     db_client = create_client(host='localhost',
                               username='admin',
@@ -786,7 +784,8 @@ if __name__ == "__main__":
     urls = [
         # "https://voice.baidu.com/act/newpneumonia/newpneumonia",
         # "https://voice.baidu.com/act/newpneumonia/newpneumonia#tab4"
-        "http://www.baidu.com/s?tn=news&ie=utf-8"
+        # "http://www.baidu.com/s?tn=news&ie=utf-8",
+        "http://www.tianqihoubao.com/lishi/"
     ]
     print(urls)
 
@@ -800,9 +799,9 @@ if __name__ == "__main__":
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
         crawling_strategy_factory=CrawlerContextFactory,
-        spider_service_class=BaiduNewsSpider,
-        result_model_class=News,
+        spider_service_class=WeatherSpiderService,
+        result_model_class=Weather,
         html_model_class=HTMLData,
         test_urls=urls,
-        rules=load_service_config("baidu_news")
+        rules=load_service_config("weather_config")
     ))
