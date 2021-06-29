@@ -7,6 +7,7 @@ from ..extended_types import PydanticObjectId
 from pydantic import Field, validator
 from uuid import UUID, uuid5, NAMESPACE_OID
 from re import findall
+from dateutil import parser
 
 
 class COVIDReport(MongoModel):
@@ -47,11 +48,7 @@ class COVIDReport(MongoModel):
     @validator("last_update", pre=True)
     def parse_last_update(cls, value):
         try:
-            dt_str = findall("\d{4}.\d{2}.\d{2}.\d{2}:\d{2}", value)[0]
-            return datetime.strptime(
-                dt_str,
-                "%Y.%m.%d %H:%M"
-            )
+            return parser.parse(value)
         except IndexError:
             print(f"Parsing datetime failed. value={value}")
             return datetime.now()
