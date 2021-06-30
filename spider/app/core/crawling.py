@@ -297,7 +297,7 @@ class PrioritizedCrawling(BaseCrawlingStrategy):
 
 
 class CrawlerContextFactory(object):
-    """ Handles ParserContext Creation """
+    """ Handles CrawlerContext Creation """
 
     __crawler_classes__ = {
         'bfs_crawler': BFSCrawling,

@@ -12,20 +12,21 @@ server_logger.setLevel(logging.DEBUG)
 
 
 def create_app() -> FastAPI:
-    container = Container()
-    container.config.from_yaml('config.yml')
-    container.config.giphy.api_key.from_env('GIPHY_API_KEY')
-    container.wire(modules=[endpoints])
+    # container = Container()
+    # container.config.from_yaml('config.yml')
+    # container.config.giphy.api_key.from_env('GIPHY_API_KEY')
+    # container.wire(modules=[endpoints])
 
     app = FastAPI()
-    app.container = container
-    app.include_router(endpoints.router)
+    # app.container = container
+    # app.include_router(endpoints.router)
+    app.include_router(job_controller)
+    app.include_router(result_controller)
     return app
 
 
 app = create_app()
-app.include_router(job_controller)
-app.include_router(result_controller)
+
 
 @app.on_event("startup")
 async def startup_event():
