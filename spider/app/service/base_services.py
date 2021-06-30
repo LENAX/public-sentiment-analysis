@@ -9,7 +9,7 @@ class BaseSpiderService(ABC):
     """
 
     @abstractmethod
-    def crawl(self, urls: List[URL], rules: Any, **kwargs) -> Any:
+    def crawl(self, urls: List[URL], rules: Any, *args, **kwargs) -> Any:
         return NotImplemented
 
 
@@ -29,7 +29,7 @@ class BaseAsyncCRUDService(ABC):
         return NotImplemented
 
     @abstractmethod
-    async def get_many(self, query: QueryArgs) -> List[BaseModel]:
+    async def get_many(self, query: dict) -> List[BaseModel]:
         return NotImplemented
 
     @abstractmethod
@@ -37,7 +37,7 @@ class BaseAsyncCRUDService(ABC):
         pass
 
     @abstractmethod
-    async def update_many(self, query: QueryArgs, data_list: List[BaseModel]) -> None:
+    async def update_many(self, query: dict, data_list: List[BaseModel]) -> None:
         pass
 
     @abstractmethod
@@ -45,7 +45,7 @@ class BaseAsyncCRUDService(ABC):
         pass
 
     @abstractmethod
-    async def delete_many(self, query: QueryArgs) -> None:
+    async def delete_many(self, query: dict) -> None:
         pass
 
 

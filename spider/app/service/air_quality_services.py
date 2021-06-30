@@ -70,9 +70,9 @@ class AirQualityService(BaseAsyncCRUDService):
                 f"Fail to retrieve air_quality record of id {id}", exc_info=True)
             raise e
 
-    async def get_many(self, query: QueryArgs) -> Coroutine[Any, Any, List[AirQualityData]]:   # type: ignore[override]
+    async def get_many(self, query: dict) -> Coroutine[Any, Any, List[AirQualityData]]:   # type: ignore[override]
         try:
-            air_quality_record = await self._air_quality_db_model.get(query.dict(exclude_unset=True))
+            air_quality_record = await self._air_quality_db_model.get(query)
             return [self._air_quality_data_model.from_db_model(record)
                     for record in air_quality_record]
         except Exception as e:
@@ -88,6 +88,9 @@ class AirQualityService(BaseAsyncCRUDService):
             self._logger.error(
                 f"Fail to update air_quality record of id {id}", exc_info=True)
             raise e
+    
+    async def update_many(self, query: dict, data_list: List[AirQualityData]) -> None: # type: ignore[override]
+        pass
 
     async def delete_one(self, id: str) -> None:
         try:
@@ -97,9 +100,9 @@ class AirQualityService(BaseAsyncCRUDService):
                 f"Fail to delete air_quality record of id {id}", exc_info=True)
             raise e
 
-    async def delete_many(self, query: QueryArgs) -> None:
+    async def delete_many(self, query: dict) -> None:
         try:
-            await self._air_quality_db_model.delete_many(query.dict(exclude_unset=True))
+            await self._air_quality_db_model.delete_many(query)
         except Exception as e:
             self._logger.error(
                 f"Fail to delete air_quality records given query {query}", exc_info=True)

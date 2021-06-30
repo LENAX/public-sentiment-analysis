@@ -3,7 +3,7 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 from ..db_models import COVIDReport as COVIDReportDBModel
-
+from devtools import debug
 
 class COVIDReportData(BaseModel):
     """ Defines a weather record
@@ -56,6 +56,7 @@ class COVIDReportData(BaseModel):
 
     @classmethod
     def from_db_model(cls, model_instance: COVIDReportDBModel) -> "COVIDReportData":
+        debug(model_instance)
         return cls.parse_obj(model_instance)
 
     def to_db_model(self) -> COVIDReportDBModel:

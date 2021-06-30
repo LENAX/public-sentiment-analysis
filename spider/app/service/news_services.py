@@ -70,9 +70,9 @@ class NewsService(BaseAsyncCRUDService):
             raise e
 
     # type: ignore[override]
-    async def get_many(self, query: QueryArgs) -> Coroutine[Any, Any, List[NewsData]]:
+    async def get_many(self, query: dict) -> Coroutine[Any, Any, List[NewsData]]:
         try:
-            news_record = await self._news_db_model.get(query.dict(exclude_unset=True))
+            news_record = await self._news_db_model.get(query)
             return [self._news_data_model.from_db_model(record)
                     for record in news_record]
         except Exception as e:
@@ -80,8 +80,7 @@ class NewsService(BaseAsyncCRUDService):
                 f"Fail to retrieve news records given query {query}", exc_info=True)
             raise e
 
-    # type: ignore[override]
-    async def update_one(self, id: str, update_data: NewsData) -> None:
+    async def update_one(self, id: str, update_data: NewsData) -> None:  # type: ignore[override]
         try:
             await self._news_db_model.update_one(
                 {"news_id": id}, update_data.dict(exclude_unset=True))
@@ -89,6 +88,10 @@ class NewsService(BaseAsyncCRUDService):
             self._logger.error(
                 f"Fail to update news record of id {id}", exc_info=True)
             raise e
+
+    
+    async def update_many(self, query: dict, data_list: List[NewsData]) -> None: # type: ignore[override]
+        pass
 
     async def delete_one(self, id: str) -> None:
         try:
@@ -98,9 +101,9 @@ class NewsService(BaseAsyncCRUDService):
                 f"Fail to delete news record of id {id}", exc_info=True)
             raise e
 
-    async def delete_many(self, query: QueryArgs) -> None:
+    async def delete_many(self, query: dict) -> None:
         try:
-            await self._news_db_model.delete_many(query.dict(exclude_unset=True))
+            await self._news_db_model.delete_many(query)
         except Exception as e:
             self._logger.error(
                 f"Fail to delete news records given query {query}", exc_info=True)
