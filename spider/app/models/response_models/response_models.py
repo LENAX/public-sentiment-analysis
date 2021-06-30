@@ -1,19 +1,7 @@
-from .base import ResponseModel
-from typing import Optional, List, Any
-from ..data_models import JobStatus, JobResult, HTMLData
+from typing import Optional, List, Any, Union
+from ..data_models import HTMLData
+from ..db_models import Job
 from ..request_models import ResultQuery
+from datetime import datetime
+from uuid import UUID
 
-class JobCreationResponse(ResponseModel):
-    creation_status: JobStatus
-
-
-class JobResultResponse(ResponseModel):
-    job_result: JobResult
-
-
-class ResultQueryResponse(ResponseModel):
-    data: List[HTMLData]
-    query: ResultQuery
-
-class SinglePageResponse(ResponseModel):
-    data: HTMLData

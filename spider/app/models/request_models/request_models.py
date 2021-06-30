@@ -1,8 +1,8 @@
-from typing import Optional, List, Tuple
-from pydantic import BaseModel
+from typing import Optional, List, Union
+from pydantic import BaseModel, validator
 from datetime import date, datetime
 from ...enums import ContentType, JobType, Parser, ParseRuleType
-
+from devtools import debug
 
 class KeywordRules(BaseModel):
     """ Keywords to include or exclude """
@@ -39,6 +39,17 @@ class ParseRule(BaseModel):
     rule_type: ParseRuleType
     is_link: bool = False
     slice_str: Optional[List[int]]
+    
+    class Config:
+        use_enum_values = True
+        
+    @validator("rule_type", pre=True)
+    def parse_rule_type(cls, value):
+        if not hasattr(ParseRuleType, value):
+            rule_type = value.split(".")[-1]
+            return ParseRuleType[rule_type.upper()]
+        else:
+            return ParseRuleType[value.upper()]
 
 class ParsingPipeline(BaseModel):
     """ Describes how the parser should parse the webpage
@@ -51,6 +62,18 @@ class ParsingPipeline(BaseModel):
     name: Optional[str]
     parser: Parser
     parse_rules: List[ParseRule]
+    
+    class Config:
+        use_enum_values = True
+        
+    @validator("parser", pre=True)
+    def parser_type(cls, value):
+        # debug(f"The value is {value}")
+        if hasattr(Parser, value):
+            return Parser[value.upper()]
+        else:
+            parser_type = value.split(".")[-1]
+            return Parser[parser_type.upper()]
 
 
 class ScrapeRules(BaseModel):
@@ -96,6 +119,9 @@ class JobSpecification(BaseModel):
     scrape_rules: ScrapeRules
     data_collection: str = 'test'
     job_collection: str = "jobs"
+    
+    class Config:
+        use_enum_values = True
 
 
 class ResultQuery(BaseModel):
@@ -113,3 +139,16 @@ class ResultQuery(BaseModel):
     keywords: Optional[List[str]]
     start_dt: Optional[datetime]
     end_dt: Optional[datetime]
+
+
+class QueryArgs(BaseModel):
+    """ Defines the query parameters for crud operations
+    """
+    id: Optional[Union[str, int]]
+    page: Optional[int] = 1
+    page_size: Optional[int] = 10
+    field: Optional[str] = ""
+    query_expression: Optional[dict]
+    start_dt: Optional[Union[date, datetime]]
+    end_dt: Optional[Union[date, datetime]]
+

@@ -1,44 +1,71 @@
 from abc import ABC, abstractmethod
 from ..models.data_models import URL, DataModel
-from typing import Any, List
+from typing import List, Any, Callable
+from pydantic import BaseModel
+from ..models.request_models import QueryArgs
 
 class BaseSpiderService(ABC):
     """ Defines common interface for spider services.
     """
 
     @abstractmethod
-    def crawl(self, urls: List[URL], rules: Any, **kwargs) -> Any:
+    def crawl(self, urls: List[URL], rules: Any, *args, **kwargs) -> Any:
         return NotImplemented
 
 
-class BaseCollectionService(ABC):
-    """ Provides the common interface for accessing data in a collection
+class BaseAsyncCRUDService(ABC):
+    """ Provides the common interface for doing CRUD
     """
-
-    def add(self, data: DataModel) -> Any:
+    @abstractmethod
+    async def add_one(self, data: BaseModel) -> BaseModel:
         return NotImplemented
 
-    def get(self, query_condition: dict) -> DataModel:
+    @abstractmethod
+    async def add_many(self, data_list: List[BaseModel]) -> List[BaseModel]:
         return NotImplemented
 
-    def update(self, data: DataModel) -> Any:
+    @abstractmethod
+    async def get_one(self, id: str) -> BaseModel:
         return NotImplemented
 
-    def delete(self, query_condition: dict) -> DataModel:
+    @abstractmethod
+    async def get_many(self, query: dict) -> List[BaseModel]:
         return NotImplemented
+
+    @abstractmethod
+    async def update_one(self, id: str, update_data: BaseModel) -> None:
+        pass
+
+    @abstractmethod
+    async def update_many(self, query: dict, data_list: List[BaseModel]) -> None:
+        pass
+
+    @abstractmethod
+    async def delete_one(self, id: str) -> None:
+        pass
+
+    @abstractmethod
+    async def delete_many(self, query: dict) -> None:
+        pass
 
 
 class BaseJobService(ABC):
     """ Provides the common interface for handling spider jobs
     """
-
-    def add(self, job_spec: Any, worker: Any) -> Any:
+    @abstractmethod
+    def add_job(self, func: Callable, **kwargs) -> Any:
         return NotImplemented
 
-    def start(self, **kwargs) -> Any:
+    @abstractmethod
+    def update_job(self, job_id: str, **kwargs) -> Any:
         return NotImplemented
 
-    def get_state(self) -> Any:
+    @abstractmethod
+    def delete_job(self, job_id: str) -> Any:
+        return NotImplemented
+
+    @abstractmethod
+    def get_job(self, job_id: str) -> Any:
         return NotImplemented
 
 

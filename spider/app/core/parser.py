@@ -2,8 +2,9 @@ import re
 from abc import ABC
 from typing import List, Callable, Generator, Any
 from ..models.data_models import (
-    ParseRule, ParseResult, URL, HTMLData
+    ParseResult, URL, HTMLData
 )
+from ..models.request_models import ParseRule
 from .parse_driver import ParseDriver
 from .exceptions import InvalidBaseURLException
 from itertools import zip_longest
