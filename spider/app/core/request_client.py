@@ -47,6 +47,9 @@ class RequestClient(BaseRequestClient):
         exc_tb: Optional[TracebackType],
     ) -> None:
         await self._client.close()
+        
+    async def close(self):
+        await self._client.close()
 
 
 @asyncinit

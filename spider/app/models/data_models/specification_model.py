@@ -9,11 +9,22 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 
 class SpecificationData(BaseModel):
+    """ Specification Data model
+    
+    Fields:
+        specification_id: Optional[UUID]
+        urls: Optional[List[str]]
+        job_type: Optional[JobType]
+        scrape_rules: Optional[ScrapeRules]
+    """
 
     specification_id: Optional[UUID]
     urls: Optional[List[str]]
     job_type: Optional[JobType]
     scrape_rules: Optional[ScrapeRules]
+    
+    class Config:
+        use_enum_values = True
 
     def __hash__(self):
         return hash(self.__repr__())

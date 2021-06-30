@@ -334,7 +334,6 @@ class BaiduCOVIDSpider(BaseSpiderService):
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: COVIDReport,
-                 html_data_model: HTMLData,
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
                  process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
@@ -345,7 +344,6 @@ class BaiduCOVIDSpider(BaseSpiderService):
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
-        self._html_data_model = html_data_model
         self._coroutine_runner = coroutine_runner
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
@@ -659,13 +657,11 @@ class WeatherSpiderService(BaseSpiderService):
                 for parsed_result in row_values.values():
                     parsed_result.value = parsed_result.value.replace("\r\n ", "").replace(" ", "")
 
-            result_dt = datetime.now()
             for daily_weather in parsed_results[1:]:
                 self._logger.debug(f"Untransformed object: {daily_weather}")
                 # result_dict = {key: daily_weather.value[key].value for key in daily_weather.value}
                 weather_record = self._result_db_model.parse_obj(
                     daily_weather.value_to_dict())
-                weather_record.create_dt = result_dt
                 self._logger.debug(f"transformed model: {weather_record}")
                 parsed_weather_history.append(weather_record)
 
@@ -776,7 +772,7 @@ if __name__ == "__main__":
     headers = RequestHeader(
         accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-        cookie=str(cookies))
+        )
     use_db = 'spiderDB'
     db_client = create_client(host='localhost',
                               username='admin',
@@ -786,7 +782,8 @@ if __name__ == "__main__":
     urls = [
         # "https://voice.baidu.com/act/newpneumonia/newpneumonia",
         # "https://voice.baidu.com/act/newpneumonia/newpneumonia#tab4"
-        "http://www.baidu.com/s?tn=news&ie=utf-8"
+        # "http://www.baidu.com/s?tn=news&ie=utf-8",
+        "http://www.tianqihoubao.com/aqi"
     ]
     print(urls)
 
@@ -796,13 +793,13 @@ if __name__ == "__main__":
         db_name=use_db,
         headers=headers.dict(),
         cookies=cookies,
-        client_session_class=RequestClient,
+        client_session_class=AsyncBrowserRequestClient,
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
         crawling_strategy_factory=CrawlerContextFactory,
-        spider_service_class=BaiduNewsSpider,
-        result_model_class=News,
+        spider_service_class=WeatherSpiderService,
+        result_model_class=AirQuality,
         html_model_class=HTMLData,
         test_urls=urls,
-        rules=load_service_config("baidu_news")
+        rules=load_service_config("aqi_config")
     ))
