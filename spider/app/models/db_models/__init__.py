@@ -7,3 +7,15 @@ from .covid_report import COVIDReport
 from .news import News
 from .weather import Weather
 from .mongo_model import MongoModel
+
+
+def bind_db_to_all_models(db_client, db_name: str) -> None:
+    db = db_client[db_name]
+    Job.db = db
+    HTMLData.db = db
+    Specification.db = db
+    Result.db = db
+    AirQuality.db = db
+    COVIDReport.db = db
+    News.db = db
+    Weather.db = db
