@@ -10,15 +10,7 @@ logging.basicConfig()
 server_logger = logging.getLogger(__name__)
 server_logger.setLevel(logging.DEBUG)
 
-
-app = FastAPI()
-app.include_router(job_controller)
-app.include_router(result_controller)
-
-@app.on_event("startup")
-async def startup_event():
-    server_logger.info("Starting up server...")
-    
+def create_app() -> FastAPI:
     db_config = config['db']
     db_client = create_client(
         host=db_config['host'],
@@ -27,6 +19,19 @@ async def startup_event():
         port=db_config['port'],
         db_name=db_config['db_name'])
     bind_db_to_all_models(db_client, db_config['db_name'])
+    
+    app = FastAPI()
+    return app
+
+app = create_app()
+app.include_router(job_controller)
+app.include_router(result_controller)
+
+@app.on_event("startup")
+async def startup_event():
+    server_logger.info("Starting up server...")
+    
+    
 
 
 @app.on_event("shutdown")
