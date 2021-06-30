@@ -2,7 +2,8 @@ from .spider_services import(
     HTMLSpiderService,
     WeatherSpiderService,
     BaiduCOVIDSpider,
-    BaiduNewsSpider
+    BaiduNewsSpider,
+    SpiderFactory
 )
 from .weather_services import WeatherService
 from .air_quality_services import AirQualityService

@@ -334,7 +334,6 @@ class BaiduCOVIDSpider(BaseSpiderService):
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: COVIDReport,
-                 html_data_model: HTMLData,
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
                  process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
@@ -345,7 +344,6 @@ class BaiduCOVIDSpider(BaseSpiderService):
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
-        self._html_data_model = html_data_model
         self._coroutine_runner = coroutine_runner
         self._event_loop_getter = event_loop_getter
         self._process_pool_executor = process_pool_executor
