@@ -121,9 +121,11 @@ class MongoModel(BaseModel):
             print(e)
 
     @classmethod
-    async def get(cls, query: dict) -> List["MongoModel"]:
+    async def get(cls, query: dict,
+                  limit: Optional[int] = 0,
+                  skip: Optional[int] = 0) -> List["MongoModel"]:
         try:
-            query_result = cls.db[cls.__collection__].find(query)
+            query_result = cls.db[cls.__collection__].find(query, limit, skip)
             result = [cls.from_mongo(data) async for data in query_result]
             return result
         except AttributeError as e:

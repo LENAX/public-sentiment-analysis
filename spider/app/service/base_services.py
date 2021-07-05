@@ -9,7 +9,7 @@ class BaseSpiderService(ABC):
     """
 
     @abstractmethod
-    def crawl(self, urls: List[URL], rules: Any, *args, **kwargs) -> Any:
+    def crawl(self, urls: List[str], rules: Any, *args, **kwargs) -> Any:
         return NotImplemented
 
 

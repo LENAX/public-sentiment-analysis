@@ -1,4 +1,4 @@
-from typing import List, Any, Callable, Union, TypeVar
+from typing import List, Any, Callable, Union, TypeVar, Optional
 from .base_services import BaseJobService
 from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.triggers.base import BaseTrigger
@@ -72,7 +72,8 @@ class AsyncJobService(BaseJobService):
                 spec_id=specification_id
             )
             ap_job = self._async_scheduler.add_job(
-                func=func, trigger=trigger, id=str(job.job_id), name=name
+                func=func, trigger=trigger, id=str(job.job_id), name=name,
+                **trigger_args
             )
             job_next_run = ap_job.next_run_time if next_run_time is None else next_run_time
             job.next_run_time = job_next_run
@@ -229,7 +230,9 @@ class AsyncJobService(BaseJobService):
             self._logger.error(f"{e}")
             raise e
     
-    async def get_running_jobs(self) -> List[JobData]:
+    async def get_running_jobs(self, 
+                               skip: Optional[int] = 0,
+                               limit: Optional[int] = 0) -> List[JobData]:
         try:
             ap_jobs = self._async_scheduler.get_jobs()
             query = {"job_id": {"$in": [job.id for job in ap_jobs]}}

@@ -1,9 +1,10 @@
 import re
 import asyncio
+import dataclasses
 from uuid import uuid5, NAMESPACE_OID
 from functools import partial
 from datetime import datetime, timedelta
-from typing import List, Any, Tuple, Callable, TypeVar, Union
+from typing import List, Any, Tuple, Callable, TypeVar, Union, Dict
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from concurrent.futures import ProcessPoolExecutor
 from .base_services import BaseSpiderService, BaseServiceFactory
@@ -669,23 +670,9 @@ class WeatherSpiderService(BaseSpiderService):
         self._logger.info("Crawl complete!")
 
 
-
-class SpiderFactory(BaseServiceFactory):
-
-    __spider_services__ = {
-        "basic_page_scraping": HTMLSpiderService,
-        "baidu_news_scraping": BaiduNewsSpider,
-        "baidu_covid_report": BaiduCOVIDSpider,
-        "weather_report": WeatherSpiderService,
-        "air_quality": WeatherSpiderService
-    }
-    
-    @classmethod
-    def create(cls, spider_type: str, **kwargs):
-        try:
-            return cls.__spider_services__[spider_type.lower()](**kwargs)
-        except Exception:
-            return None
+@dataclasses.dataclass
+class SpiderFactory:
+    spider_services: Dict[str, BaseSpiderService]
 
 
 
@@ -699,6 +686,7 @@ if __name__ == "__main__":
     from yaml import load, dump
     from yaml import CLoader as Loader, CDumper as Dumper
     from os import getcwd
+    from devtools import debug
 
 
     def create_client(host: str, username: str,
@@ -773,7 +761,7 @@ if __name__ == "__main__":
         accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
         )
-    use_db = 'spiderDB'
+    use_db = 'test'
     db_client = create_client(host='localhost',
                               username='admin',
                               password='root',
@@ -786,6 +774,8 @@ if __name__ == "__main__":
         "http://www.tianqihoubao.com/aqi"
     ]
     print(urls)
+    config = load_service_config("aqi_config")
+    debug(config)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(test_spider_services(
@@ -801,5 +791,5 @@ if __name__ == "__main__":
         result_model_class=AirQuality,
         html_model_class=HTMLData,
         test_urls=urls,
-        rules=load_service_config("aqi_config")
+        rules=config
     ))

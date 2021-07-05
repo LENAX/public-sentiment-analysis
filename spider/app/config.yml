@@ -9,6 +9,11 @@ base: &base
     password: ${PASSWORD}
     port: ${PORT}
     db_name: ${DB_NAME}
+  api:
+    default:
+      limit: 10
+      page: 0
+      query: {}
 local_development:
   headers:
     header_accept: text/html, application/xhtml+xml, application/xml, image/webp, */*

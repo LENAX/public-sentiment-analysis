@@ -4,11 +4,18 @@
 from dependency_injector.wiring import inject, Provide
 from dependency_injector import containers, providers
 
-from .service_containers import Services
+from .service_containers import Services, SpiderServices
 from .resource_container import ResourceContainer
 from .scheduler_container import SchedulerContainer
 
 class Application(containers.DeclarativeContainer):
+    """Application dependency container
+
+    Containers:
+        resources, 
+        scheduler, 
+        services
+    """
 
     config = providers.Configuration()
 
@@ -26,5 +33,10 @@ class Application(containers.DeclarativeContainer):
         Services,
         resources=resources,
         scheduler_container=scheduler
+    )
+    
+    spider_services = providers.Container(
+        SpiderServices,
+        resources=resources
     )
 

@@ -78,39 +78,6 @@ class Services(containers.DeclarativeContainer):
     resources = providers.DependenciesContainer()
     scheduler_container = providers.DependenciesContainer()
 
-    # spider services
-    weather_spider_service = providers.Singleton(
-        WeatherSpiderService,
-        request_client=resources.http_request_client,
-        spider_class=Spider,
-        parse_strategy_factory=ParserContextFactory,
-        crawling_strategy_factory=CrawlerContextFactory,
-        result_db_model=Weather
-    )
-    covid_spider_service = providers.Singleton(
-        BaiduCOVIDSpider,
-        request_client=resources.browser_client,
-        spider_class=Spider,
-        parse_strategy_factory=ParserContextFactory,
-        result_db_model=COVIDReport
-    )
-    news_spider_service = providers.Singleton(
-        BaiduNewsSpider,
-        request_client=resources.http_request_client,
-        spider_class=Spider,
-        parse_strategy_factory=ParserContextFactory,
-        result_db_model=News
-    )
-    aqi_spider_service = providers.Singleton(
-        WeatherSpiderService,
-        request_client=resources.http_request_client,
-        spider_class=Spider,
-        parse_strategy_factory=ParserContextFactory,
-        crawling_strategy_factory=CrawlerContextFactory,
-        result_db_model=AirQuality
-    )
-    spider_service_factory = providers.Singleton(SpiderFactory)
-    
     # job scheduling service
     job_service = providers.Singleton(
         AsyncJobService,
@@ -124,6 +91,77 @@ class Services(containers.DeclarativeContainer):
     news_service = providers.Singleton(NewsService)
     covid_report_service = providers.Singleton(COVIDReportService)
 
+
+class SpiderServices(containers.DeclarativeContainer):
+    config = providers.Configuration()
+    resources = providers.DependenciesContainer()
+    
+    spider_service_dispatcher = providers.Factory(
+        SpiderFactory,
+        spider_services=providers.Dict(
+            basic_page_scraping=providers.Singleton(
+                WeatherSpiderService,
+                request_client=resources.http_request_client,
+                spider_class=Spider,
+                parse_strategy_factory=ParserContextFactory,
+                crawling_strategy_factory=CrawlerContextFactory,
+                result_db_model=Weather
+            ),
+            baidu_news_scraping=providers.Singleton(
+                BaiduCOVIDSpider,
+                request_client=resources.browser_client,
+                spider_class=Spider,
+                parse_strategy_factory=ParserContextFactory,
+                result_db_model=COVIDReport
+            ),
+            baidu_covid_report=providers.Singleton(
+                BaiduNewsSpider,
+                request_client=resources.http_request_client,
+                spider_class=Spider,
+                parse_strategy_factory=ParserContextFactory,
+                result_db_model=News
+            ),
+            weather_report=providers.Singleton(
+                WeatherSpiderService,
+                request_client=resources.http_request_client,
+                spider_class=Spider,
+                parse_strategy_factory=ParserContextFactory,
+                crawling_strategy_factory=CrawlerContextFactory,
+                result_db_model=AirQuality
+            )
+        )
+    )
+
+    # weather_spider_service = providers.Singleton(
+    #     WeatherSpiderService,
+    #     request_client=resources.http_request_client,
+    #     spider_class=Spider,
+    #     parse_strategy_factory=ParserContextFactory,
+    #     crawling_strategy_factory=CrawlerContextFactory,
+    #     result_db_model=Weather
+    # )
+    # covid_spider_service = providers.Singleton(
+    #     BaiduCOVIDSpider,
+    #     request_client=resources.browser_client,
+    #     spider_class=Spider,
+    #     parse_strategy_factory=ParserContextFactory,
+    #     result_db_model=COVIDReport
+    # )
+    # news_spider_service = providers.Singleton(
+    #     BaiduNewsSpider,
+    #     request_client=resources.http_request_client,
+    #     spider_class=Spider,
+    #     parse_strategy_factory=ParserContextFactory,
+    #     result_db_model=News
+    # )
+    # aqi_spider_service = providers.Singleton(
+    #     WeatherSpiderService,
+    #     request_client=resources.http_request_client,
+    #     spider_class=Spider,
+    #     parse_strategy_factory=ParserContextFactory,
+    #     crawling_strategy_factory=CrawlerContextFactory,
+    #     result_db_model=AirQuality
+    # )
 
 if __name__ == '__main__':
     import asyncio

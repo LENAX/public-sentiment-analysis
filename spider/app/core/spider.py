@@ -1,8 +1,8 @@
 import re
 import chardet
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any, List, Tuple, TypeVar, Callable
-from .request_client import RequestClient, AsyncBrowserRequestClient
+from .request_client import BaseRequestClient, RequestClient, AsyncBrowserRequestClient
 from ..enums import RequestStatus
 from asyncio import TimeoutError
 from .parser import ParserContext
@@ -12,6 +12,7 @@ SpiderInstance = TypeVar("SpiderInstance")
 
 class BaseSpider(ABC):
 
+    @abstractmethod
     def fetch(self, url: str, params: dict = {}):
         return NotImplemented
 
@@ -19,7 +20,7 @@ class BaseSpider(ABC):
 class Spider(BaseSpider):
     """ Core Spider Class for fetching web pages """
 
-    def __init__(self, request_client: RequestClient, url_to_request: str = ""):
+    def __init__(self, request_client: BaseRequestClient, url_to_request: str = ""):
         self._request_client = request_client
         self._request_status = None
         self._url = url_to_request
@@ -42,7 +43,7 @@ class Spider(BaseSpider):
         self._request_status = value
 
     @classmethod
-    def create_from_urls(cls, urls: List[str], request_client: RequestClient) -> List[SpiderInstance]:
+    def create_from_urls(cls, urls: List[str], request_client: BaseRequestClient) -> List[SpiderInstance]:
         return [cls(request_client, url) for url in urls]
 
     def __repr__(self):
@@ -57,7 +58,7 @@ class Spider(BaseSpider):
         return (len(cn_characters) == 0 or 
                 len(common_cn_characters)/len(cn_characters) < 0.99)
     
-    def _fix_mojibake(self, byte_str: str, encoding_detector: Callable) -> str:
+    def _fix_mojibake(self, byte_str: bytes, encoding_detector: Callable) -> str:
         detect_result = encoding_detector(byte_str)
         fixed_text = ""
         if detect_result['confidence'] >= 0.9:
@@ -178,7 +179,7 @@ if __name__ == "__main__":
             return await asyncio.gather(*(sem_task(task) for task in tasks))
 
         async with (await AsyncBrowserRequestClient(headers=headers, cookies=cookies)) as client:
-            spiders = Spider.create_from_urls(urls, client)
+            spiders: BaseSpider = Spider.create_from_urls(urls, client)
             print(spiders)
             html_pages = await gather_with_concurrency(2, *[spider.fetch() for spider in spiders])
             print(html_pages)

@@ -70,7 +70,7 @@ def covid_scrape_rule():
 @pytest.fixture
 def weather_specification(weather_scrape_rule):
     return SpecificationData(
-        urls=["http://www.tianqihoubao.com/lishi/"],
+        urls=["http://www.tianqihoubao.com/lishi"],
         job_type=JobType.WEATHER_REPORT,
         scrape_rules=weather_scrape_rule
     )
@@ -78,7 +78,7 @@ def weather_specification(weather_scrape_rule):
 @pytest.fixture
 def aqi_specification(aqi_scrape_rule):
     return SpecificationData(
-        urls=["http://www.tianqihoubao.com/aqi/"],
+        urls=["http://www.tianqihoubao.com/aqi"],
         job_type=JobType.AIR_QUALITY_REPORT,
         scrape_rules=aqi_scrape_rule
     )

@@ -24,14 +24,8 @@ from devtools import debug
 
 
 @inject
-async def main(weather_spider_service: WeatherSpiderService = Provide[
-                  Application.services.weather_spider_service],
-               covid_spider_service: BaiduCOVIDSpider = Provide[
-                  Application.services.covid_spider_service],
-               news_spider_service: BaiduNewsSpider = Provide[
-                   Application.services.news_spider_service],
-               aqi_spider_service: WeatherService = Provide[
-                   Application.services.aqi_spider_service],
+async def main(spider_service_dispatcher: WeatherSpiderService = Provide[
+                  Application.spider_services.spider_service_dispatcher],
                job_service: AsyncJobService = Provide[
                    Application.services.job_service],
                aqi_service: AirQualityService = Provide[
@@ -44,10 +38,12 @@ async def main(weather_spider_service: WeatherSpiderService = Provide[
                    Application.services.covid_report_service]
             ):
 
+    weather_spider_service = spider_service_dispatcher.spider_services['weather_report']
+    
     debug(weather_spider_service)
-    debug(covid_spider_service)
-    debug(news_spider_service)
-    debug(aqi_spider_service)
+    # debug(covid_spider_service)
+    # debug(news_spider_service)
+    # debug(aqi_spider_service)
     debug(job_service)
     debug(aqi_service)
     debug(spec_service)
@@ -77,7 +73,7 @@ if __name__ == '__main__':
     application.wire(modules=[sys.modules[__name__]])
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(*sys.argv[1:]))
+    loop.run_until_complete(main())
     application.resources.shutdown_resources()
     
 
