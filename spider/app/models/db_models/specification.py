@@ -22,8 +22,6 @@ class Specification(MongoModel):
             NAMESPACE_OID, f"Spec_Object_{datetime.now().timestamp()}"))
 
     urls: List[str]
-    job_name: Optional[str]
-    job_type: JobType
     scrape_rules: ScrapeRules
     description: str = Field("")
     create_dt: datetime = Field(default_factory=lambda: datetime.now())

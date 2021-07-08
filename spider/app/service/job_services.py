@@ -4,7 +4,7 @@ from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.triggers.base import BaseTrigger
 from apscheduler.job import Job as APJob
 from ..models.db_models import Job, Specification
-from ..models.data_models import JobData
+from ..models.data_models import JobData, Schedule, JobStatus
 from ..enums import JobState
 from datetime import datetime
 from asyncio import Lock
@@ -13,7 +13,8 @@ from ..exceptions import ResourceNotFound
 import logging
 from logging import Logger, getLogger
 
-logging.basicConfig()
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
+                    datefmt="%Y-%m-%dT%H:%M:%S%z")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -42,7 +43,7 @@ class AsyncJobService(BaseJobService):
         self._lock = lock() # is lock necessary?
         self._logger = logger
 
-    async def add_job(self, func: Callable, specification_id: str = None,
+    async def add_job(self, func: Callable, schedule: Schedule, specification_id: str = None,
                       trigger: BaseTrigger = None, name: str = None,
                       description: str = "", misfire_grace_time: int = None,
                       coalesce: bool = False, max_instances: int = 1,
@@ -68,12 +69,13 @@ class AsyncJobService(BaseJobService):
             job = Job(
                 name=job_name,
                 description=description,
+                schedule=schedule,
                 current_state=JobState.WORKING,
                 spec_id=specification_id
             )
             ap_job = self._async_scheduler.add_job(
                 func=func, trigger=trigger, id=str(job.job_id), name=name,
-                **trigger_args
+                **(schedule.dict())
             )
             job_next_run = ap_job.next_run_time if next_run_time is None else next_run_time
             job.next_run_time = job_next_run
@@ -89,6 +91,8 @@ class AsyncJobService(BaseJobService):
                          job_id: str,
                          func: Callable = None,
                          specification_id: str = None,
+                         schedule: Schedule = None,
+                         status: JobStatus = None,
                          **changes) -> None:
         if type(job_id) is not str:
             job_id = str(job_id)
@@ -98,6 +102,12 @@ class AsyncJobService(BaseJobService):
         
         if specification_id is not None:
             changes['spec_id'] = specification_id
+            
+        if schedule is not None:
+            changes['schedule'] = schedule
+            
+        if status is not None:
+            changes['current_state'] = status
         
         try:
             ap_job = self._async_scheduler.get_job(job_id)
@@ -108,7 +118,22 @@ class AsyncJobService(BaseJobService):
                 self._logger.error(f"{resource_not_found_error}")
                 raise resource_not_found_error
             
-            ap_job.modify(**{key: changes[key] for key in changes if hasattr(ap_job, key)})
+            if schedule is not None:
+                # apscheduler uses a different api to reschedule a job
+                ap_job.reschedule(trigger='cron', **schedule.dict())
+                
+            if status is not None:
+                if status.value == 'paused':
+                    # apscheduler uses a different api to reschedule a job
+                    ap_job.pause()
+                elif status.value == 'resumed':
+                    ap_job.resume()
+            
+            ap_update = {key: changes[key]
+                         for key in changes if hasattr(ap_job, key)}
+            if len(ap_update):
+                ap_job.modify(**ap_update)
+            
             updates = {key: changes[key] for key in changes if key in self._job_model.__fields__}
             await self._job_model.update_one(
                 filter={"job_id": job_id}, update=updates)
@@ -265,7 +290,8 @@ if __name__ == "__main__":
     from functools import partial
     import logging
 
-    logging.basicConfig()
+    logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
+                    datefmt="%Y-%m-%dT%H:%M:%S%z")
     logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 
     logger = logging.getLogger(__name__)

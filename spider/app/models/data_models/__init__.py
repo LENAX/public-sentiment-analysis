@@ -14,3 +14,5 @@ from .air_quality_model import AirQualityData
 from .news_model import NewsData
 from .covid_report_model import COVIDReportData
 from .specification_model import SpecificationData
+from .schedule_model import Schedule
+from .job_status_model import JobStatus

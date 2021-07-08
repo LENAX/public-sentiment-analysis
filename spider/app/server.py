@@ -1,6 +1,8 @@
 import uvicorn
-from fastapi import FastAPI, HTTPException
-from .db import create_client
+import random
+import string
+import time
+from fastapi import FastAPI, Request
 from .models.db_models import bind_db_to_all_models
 from .controller.restful import job_controller, result_controller
 from .config import config
@@ -8,7 +10,8 @@ from .containers.application_container import Application
 
 import logging
 
-logging.basicConfig()
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
+                    datefmt="%Y-%m-%dT%H:%M:%S%z")
 server_logger = logging.getLogger(__name__)
 server_logger.setLevel(logging.DEBUG)
 
@@ -39,6 +42,22 @@ async def startup_event():
     handler.setFormatter(logging.Formatter(
         "%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(handler)
+    
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    idem = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    server_logger.info(f"rid={idem} start request path={request.url.path}")
+    start_time = time.time()
+
+    response = await call_next(request)
+
+    process_time = (time.time() - start_time) * 1000
+    formatted_process_time = '{0:.2f}'.format(process_time)
+    server_logger.info(
+        f"rid={idem} completed_in={formatted_process_time}ms status_code={response.status_code}")
+
+    return response
 
 @app.get("/")
 async def welcome():

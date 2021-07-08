@@ -3,6 +3,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from ..request_models import ScrapeRules
 from ..db_models import Specification as SpecificationDBModel
+from .job_models import JobData
 from ...enums import JobType
 from uuid import UUID
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -22,8 +23,7 @@ class SpecificationData(BaseModel):
 
     specification_id: Optional[UUID]
     urls: Optional[List[str]]
-    job_name: Optional[str]
-    job_type: Optional[JobType]
+    job_spec: Optional[JobData]
     scrape_rules: Optional[ScrapeRules]
     
     class Config:

@@ -28,7 +28,8 @@ from itertools import chain
 import logging
 from logging import Logger, getLogger
 
-logging.basicConfig()
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
+                    datefmt="%Y-%m-%dT%H:%M:%S%z")
 spider_service_logger = logging.getLogger(__name__)
 spider_service_logger.setLevel(logging.DEBUG)
 

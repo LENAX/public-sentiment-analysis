@@ -7,7 +7,7 @@ from bson.objectid import ObjectId
 from ..extended_types import PydanticObjectId
 from pydantic import Field
 from uuid import UUID, uuid5, uuid4, NAMESPACE_OID
-
+from ..data_models import Schedule
 
 class Job(MongoModel):
     __collection__: str = "Job"
@@ -22,6 +22,7 @@ class Job(MongoModel):
     name: str
     description: str = ""
     current_state: JobState
+    schedule: Schedule
     next_run_time: Optional[datetime]
     detail_id: Optional[UUID]
     spec_id: Optional[UUID]

@@ -1,9 +1,10 @@
 from pydantic import BaseModel
 from typing import Optional
-from ...enums import JobState
+from ...enums import JobState, JobType
 from uuid import UUID
 from datetime import datetime
 from ..db_models import Job
+from .schedule_model import Schedule
 
 
 class JobData(BaseModel):
@@ -16,6 +17,8 @@ class JobData(BaseModel):
     job_id: UUID
     name: str
     description: str = ""
+    job_type: JobType
+    schedule: Schedule
     current_state: JobState
     next_run_time: Optional[datetime]
 
