@@ -5,6 +5,10 @@ class JobState(str, Enum):
     PENDING = 'pending'
     DONE = 'done'
     WORKING = 'working'
+    PAUSED = 'paused'
+    CENCELLED = 'cancelled'
+    STOPPED = 'stopped'
+    RESUMED = 'resumed'
     FAILED = 'failed'
 
 
