@@ -18,7 +18,7 @@ server_logger.setLevel(logging.DEBUG)
 
 def create_app() -> FastAPI:
     container = Application()
-    # container.config.from_yaml('config.yml')
+    container.config.from_dict(config)
     # container.config.giphy.api_key.from_env('GIPHY_API_KEY')
     container.wire(modules=[job_controller, result_controller])
 
