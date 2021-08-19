@@ -63,9 +63,13 @@ class AsyncBrowserRequestClient(BaseRequestClient):
                  headless: bool = True,
                  headers: dict = {},
                  cookies: List[dict] = []):
+        self._browser_launcher = browser_launcher
+        self._browser_path = browser_path
+        self._headless = headless
         self._browser = await browser_launcher(
             browser_path=browser_path,
-            headless=headless)
+            headless=headless,
+            args=['--no-sandbox', '--proxy-server=localhost:1087'])
         self._headers = headers
         self._cookies = cookies
 
@@ -84,6 +88,10 @@ class AsyncBrowserRequestClient(BaseRequestClient):
     @cookies.setter
     def cookies(self, new_cookies: dict):
         self._cookies = new_cookies
+        
+    @property
+    def browser(self):
+        return self._browser
 
     async def _patch_response(self, response: Response, js_evaluator: Callable):
         """ Make response seems identical to the one returned from RequestClient
@@ -123,6 +131,12 @@ class AsyncBrowserRequestClient(BaseRequestClient):
             print(e)
         finally:
             await page.close()
+
+    async def launch_browser(self):
+        self._browser = await self._browser_launcher(
+            browser_path=self._browser_path,
+            headless=self._headless,
+            args=['--no-sandbox', '--proxy-server=localhost:1087'])
 
     async def close(self):
         await self._browser.close()
@@ -188,10 +202,6 @@ if __name__ == "__main__":
                                                     cookies=cookies)) as browser_client:
             async with browser_client.get(url=urls[0]) as response:
                 result = await response.text()
-                doc = pq(result)
-                epidemic_summary = doc(
-                    ".ProvinceSummary_1-1-306_3Zia33").text()
-                print(epidemic_summary)
             
             # page_texts = await asyncio.gather(*[fetch(browser_client, url, {})
             #                                     for url in urls])

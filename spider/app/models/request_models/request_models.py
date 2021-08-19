@@ -68,7 +68,6 @@ class ParsingPipeline(BaseModel):
         
     @validator("parser", pre=True)
     def parser_type(cls, value):
-        # debug(f"The value is {value}")
         if hasattr(Parser, value):
             return Parser[value.upper()]
         else:
@@ -97,10 +96,10 @@ class ScrapeRules(BaseModel):
     max_depth: Optional[int]
     time_range: Optional[TimeRange]
     url_patterns: Optional[List[str]]
-    parsing_pipeline: List[ParsingPipeline]
+    parsing_pipeline: Optional[List[ParsingPipeline]]
     max_retry: Optional[int] = 1
     max_concurrency: Optional[int] = 50
-    request_params: dict = {}
+    request_params: Optional[dict] = {}
 
 
 

@@ -1,21 +1,23 @@
+from app.models.request_models.request_models import ScrapeRules
 from fastapi import APIRouter, Depends, HTTPException
-from ...models.response_models import Response
-from ...models.data_models import (
+from ..models.response_models import Response
+from ..models.data_models import (
     JobData, SpecificationData, Schedule, JobStatus)
-from typing import Optional
+from typing import Optional, List, Callable
 from dependency_injector.wiring import inject, Provide
-from ...containers import Application
-from ...service import (
+from ..containers import Application
+from ..service import (
     AsyncJobService,
-    SpiderFactory,
+    DXYCovidReportSpiderService,
     SpecificationService
 )
-
+import pickle
 import logging
+import aiohttp
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
                     datefmt="%Y-%m-%dT%H:%M:%S%z")
-job_logger = logging.getLogger(__name__)
+job_logger = logging.getLogger(f"{__name__}.job_controller")
 job_logger.setLevel(logging.DEBUG)
 
 
@@ -25,8 +27,8 @@ job_controller = APIRouter()
 @job_controller.get("/jobs", tags=["jobs"], response_model=Response[JobData])
 @inject
 async def get_jobs(query: Optional[str] = None,
-                   limit: Optional[str] = None,
-                   page: Optional[str] = None,
+                   limit: Optional[int] = 0,
+                   page: Optional[int] = 0,
                    default_query: str = Depends(Provide[Application.config.api.default.query]),
                    default_limit: int = Depends(Provide[Application.config.api.default.limit.as_int()]),
                    default_page: int = Depends(Provide[Application.config.api.default.page.as_int()]),
@@ -38,23 +40,28 @@ async def get_jobs(query: Optional[str] = None,
         
         job_logger.info(f"In get jobs..., query: {query}, limit: {limit}, page: {page}")
 
-        skip = int(page) * int(limit) if int(page) > 0 else 0
+        skip = page * limit if page > 0 else 0
         running_jobs = job_service.get_running_jobs(skip=skip, limit=int(limit))
         
         job_logger.info(
             f"Got jobs {running_jobs}")
         
-        return Response[JobData](data=running_jobs)
+        return Response[JobData](
+            data=running_jobs, message='ok', statusCode=200, status='success')
     except Exception as e:
         job_logger.error(f"In get jobs, Error: {e}")
-        return Response(error=str(e))
+        return Response(message=f'{e}', statusCode=500, status='failed'), 500
 
+            
+            
 @job_controller.post("/jobs", tags=["jobs"], response_model=Response[JobData])
 @inject
 async def create_job(specification: SpecificationData,
-                     spider_service_dispatcher: SpiderFactory = Provide[
-                         Application.spider_services.spider_service_dispatcher],
-                     spec_service: SpecificationService = Provide[Application.services.spec_service],
+                     run_crawling_task: Callable = Depends(Provide[
+                        Application.rpc.spider_rpc]),
+                     spider_service: DXYCovidReportSpiderService = Depends(Provide[
+                        Application.spider_services.dxy_spider_service]),
+                     spec_service: SpecificationService = Depends(Provide[Application.services.spec_service]),
                      job_service: AsyncJobService = Depends(Provide[Application.services.job_service])):
     # read and validate specification
     try:
@@ -88,7 +95,7 @@ async def create_job(specification: SpecificationData,
             job_logger.info("Saving job specification...")
             
             # save the new specification
-            spec = await spec_service.add_one(spec)
+            await spec_service.add_one(spec)
             
             job_logger.info("Job specification saved.")
         else:
@@ -98,22 +105,28 @@ async def create_job(specification: SpecificationData,
             job_logger.info(f"Fetched job specification: {spec}")
             
         job_spec = spec.job_spec
-        spider_service = spider_service_dispatcher.spider_services[job_spec.job_type.value]
         
         job_logger.info(f"Use spider {spider_service}")
-        
-        crawl_task = spider_service.crawl(urls=spec.urls, rules=spec.scrape_rules)
-        created_job = await job_service.add_job(func=crawl_task, schedule=job_spec.schedule,
+        job_logger.info(f"run_crawling_task {run_crawling_task}")
+        created_job = await job_service.add_job(func=run_crawling_task,
+                                                kwargs={
+                                                    'urls': spec.urls,
+                                                    'port': 8000,
+                                                    'endpoint': '/spider/crawl-task'},
+                                                schedule=job_spec.schedule,
                                                 specification_id=spec.specification_id,
                                                 name=job_spec.name)
         
         job_logger.info(f"Created job {created_job}")
         
-        return Response[JobData](data=created_job)
+        return Response[JobData](
+                data=created_job,
+                message="ok",
+                statusCode=200,
+                status="success")
     except Exception as e:
         job_logger.error(f"In create_job, Error: {e}")
-        return Response(error=str(e))
-
+        raise e
 
 @job_controller.delete("/jobs/{job_id}", tags=["jobs"], response_model=Response[str])
 @inject
@@ -123,13 +136,18 @@ async def delete_job(job_id: str,
         job_logger.info(
             f"In delete_job..., job_id: {job_id}")
         await job_service.delete_job(job_id)
-        return Response[str](data="ok")
+        return Response(message="ok",
+                        statusCode=200,
+                        status="success")
     except Exception as e:
         job_logger.error(f"In delete_job, Error: {e}")
-        return Response(error=str(e))
+        return Response(message=f"{e}",
+                        statusCode=500,
+                        status="failed")
 
 
 @job_controller.put("/jobs/{job_id}/schedule", tags=["jobs"], response_model=Response[str])
+@inject
 async def update_job_schedule(job_id: str,
                               schedule: Schedule,
                               job_service: AsyncJobService = Depends(Provide[Application.services.job_service])):
@@ -143,13 +161,18 @@ async def update_job_schedule(job_id: str,
         
         await job_service.update_job(job_id, schedule=schedule)
         job_logger.info("Job update succeed!")
-        return Response[str](data='ok')
+        return Response(message="ok",
+                        statusCode=200,
+                        status="success")
     except Exception as e:
         job_logger.error(f"Error: {e}")
-        return Response(error=str(e))
+        return Response(message=f"{e}",
+                        statusCode=500,
+                        status="failed")
 
 
 @job_controller.put("/jobs/{job_id}/status", tags=["jobs"], response_model=Response[str])
+@inject
 async def update_job_status(job_id: str,
                             status: JobStatus,
                             job_service: AsyncJobService = Depends(Provide[Application.services.job_service])):
@@ -163,7 +186,11 @@ async def update_job_status(job_id: str,
 
         await job_service.update_job(job_id, status=status)
         job_logger.info("Job status update succeed!")
-        return Response[str](data='ok')
+        return Response(message="ok",
+                        statusCode=200,
+                        status="success")
     except Exception as e:
         job_logger.error(f"Error: {e}")
-        return Response(error=str(e))
+        return Response(message=f"{e}",
+                        statusCode=500,
+                        status="failed")

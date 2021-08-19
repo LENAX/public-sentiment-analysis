@@ -4,7 +4,7 @@ import string
 import time
 from fastapi import FastAPI, Request
 from .models.db_models import bind_db_to_all_models
-from .controller.restful import job_controller, result_controller
+from .controller.restful import job_controller, covid_report_controller, spider_controller
 from .config import config
 from .containers.application_container import Application
 
@@ -19,8 +19,8 @@ server_logger.setLevel(logging.DEBUG)
 def create_app() -> FastAPI:
     container = Application()
     container.config.from_dict(config)
-    # container.config.giphy.api_key.from_env('GIPHY_API_KEY')
-    container.wire(modules=[job_controller, result_controller])
+    container.wire(modules=[
+        job_controller, covid_report_controller, spider_controller])
 
     db_client = container.resources.db_client()
     bind_db_to_all_models(db_client, config['db']['db_name'])
@@ -28,7 +28,9 @@ def create_app() -> FastAPI:
     app = FastAPI()
     app.container = container
     app.include_router(job_controller)
-    app.include_router(result_controller)
+    app.include_router(covid_report_controller)
+    app.include_router(spider_controller)
+    
     return app
 
 

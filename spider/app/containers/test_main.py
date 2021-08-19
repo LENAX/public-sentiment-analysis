@@ -25,7 +25,7 @@ from devtools import debug
 
 @inject
 async def main(spider_service_dispatcher: WeatherSpiderService = Provide[
-                  Application.spider_services.spider_service_dispatcher],
+                  Application.spider_dispatching_services.spider_service_dispatcher],
                job_service: AsyncJobService = Provide[
                    Application.services.job_service],
                aqi_service: AirQualityService = Provide[
@@ -38,7 +38,7 @@ async def main(spider_service_dispatcher: WeatherSpiderService = Provide[
                    Application.services.covid_report_service]
             ):
 
-    weather_spider_service = spider_service_dispatcher.spider_services['weather_report']
+    weather_spider_service = spider_service_dispatcher.spider_dispatching_services['weather_report']
     
     debug(weather_spider_service)
     # debug(covid_spider_service)
