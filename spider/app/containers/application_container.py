@@ -34,9 +34,4 @@ class Application(containers.DeclarativeContainer):
         resources=resources,
         scheduler_container=scheduler
     )
-    
-    spider_dispatching_services = providers.Container(
-        SpiderDispatcherContainer,
-        resources=resources
-    )
 

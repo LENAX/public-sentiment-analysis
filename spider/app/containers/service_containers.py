@@ -26,7 +26,8 @@ from ..core import (
     CrawlerContextFactory
 )
 from ..db.client import create_client
-
+from .resource_container import ResourceContainer
+from .scheduler_container import SchedulerContainer
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.executors.asyncio import AsyncIOExecutor
@@ -127,11 +128,17 @@ class SpiderServiceContainer(containers.DeclarativeContainer):
 
 class SpiderDispatcherContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
+    resources = providers.DependenciesContainer()
+    
     spider_services_container = providers.DependenciesContainer()
+    # spider_services_container = providers.Container(
+    #     SpiderServiceContainer,
+    #     resources=resources
+    # )
     
     spider_service_dispatcher = providers.Factory(
         SpiderFactory,
-        spider_dispatching_services=providers.Dict(
+        spider_services=providers.Dict(
             baidu_covid_report=spider_services_container.baidu_covid_spider_service,
             baidu_news_scraping=spider_services_container.baidu_news_spider_service,
             dxy_covid_spider=spider_services_container.dxy_covid_spider_service,
@@ -145,16 +152,19 @@ class Services(containers.DeclarativeContainer):
     """
 
     config = providers.Configuration()
-
+    resources = providers.DependenciesContainer()
     scheduler_container = providers.DependenciesContainer()
+
     data_services_container = providers.Container(
         DataServiceContainer
     )
-    spider_dispatcher_container = providers.Container(
-        SpiderDispatcherContainer
-    )
     spider_services_container = providers.Container(
-        SpiderServiceContainer
+        SpiderServiceContainer,
+        resources=resources
+    )
+    spider_dispatcher_container = providers.Container(
+        SpiderDispatcherContainer,
+        spider_services_container=spider_services_container
     )
 
     # job scheduling service
@@ -169,23 +179,26 @@ if __name__ == '__main__':
     from ..config import config as app_config
     from devtools import debug
     
+    
     service_container = Services()
     debug(app_config)
     service_container.config.from_dict(app_config)
 
     async def main(container: containers.Container):
-        db_client = container.db_client()
         # http_request_client = await container.http_request_client()
         # browser_client = await container.browser_client()
-        weather_spider_service = await container.weather_spider_service()
-        covid_spider_service = await container.covid_spider_service()
-        news_spider_service = await container.news_spider_service()
-        aqi_spider_service = await container.aqi_spider_service()
+        weather_spider_service = await container.spider_services_container.weather_spider_service()
+        baidu_covid_spider_service = await container.spider_services_container.baidu_covid_spider_service()
+        dxy_covid_spider_service = await container.spider_services_container.dxy_covid_spider_service()
+        baidu_news_spider_service = await container.spider_services_container.baidu_news_spider_service()
+        aqi_spider_service = await container.spider_services_container.air_quality_spider_service()
         job_service = container.job_service()
-        aqi_service = container.aqi_service()
-        spec_service = container.spec_service()
-        news_service = container.news_service()
-        covid_report_service = container.covid_report_service()
+        aqi_service = container.data_services_container.aqi_service()
+        spec_service = container.data_services_container.spec_service()
+        news_service = container.data_services_container.news_service()
+        baidu_covid_report_service = container.data_services_container.baidu_covid_report_service()
+        dxy_covid_report_service = container.data_services_container.dxy_covid_report_service()
+        spider_dispatcher_service = await container.spider_dispatcher_container.spider_service_dispatcher()
         
         await asyncio.sleep(3)
         

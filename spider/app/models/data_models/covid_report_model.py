@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
-from ..db_models import COVIDReport as COVIDReportDBModel
+from ..db_models import BaiduCOVIDReport as COVIDReportDBModel
 from devtools import debug
 
 class COVIDReportData(BaseModel):

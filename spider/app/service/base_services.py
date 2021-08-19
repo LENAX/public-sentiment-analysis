@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from ..models.data_models import URL, DataModel
 from typing import List, Any, Callable
 from pydantic import BaseModel
 from ..models.request_models import QueryArgs

@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, time
 from typing import List, Any, Callable
 from .base_services import BaseSpiderService
-from ..models.db_models import COVIDReport
+from ..models.db_models import PHESCOVIDReport
 from ..models.request_models import ScrapeRules
 from ..models.data_models import DXYCOVIDReportData, COVIDReportData
 from ..core import AsyncBrowserRequestClient
@@ -29,7 +29,7 @@ class DXYCovidReportSpiderService(BaseSpiderService):
 
     def __init__(self,
                  request_client: AsyncBrowserRequestClient,
-                 result_db_model: COVIDReport,
+                 result_db_model: PHESCOVIDReport,
                  result_data_model: COVIDReportData,
                  throttled_fetch: Callable = throttled,
                  logger: Logger = spider_service_logger):
@@ -440,7 +440,7 @@ if __name__ == "__main__":
                                 port=27017,
                                 db_name=use_db)
         db = db_client[use_db]
-        COVIDReport.db = db
+        PHESCOVIDReport.db = db
         headers = RequestHeader(
             accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
@@ -464,7 +464,7 @@ if __name__ == "__main__":
                 
         async with (await AsyncBrowserRequestClient(headers=headers, cookies=cookies)) as client_session:
             spider_service = DXYCovidReportSpiderService(
-                browser_request_client=client_session, result_db_model=COVIDReport)
+                browser_request_client=client_session, result_db_model=PHESCOVIDReport)
             await spider_service.load_historical_report('https://ncov.dxy.cn/ncovh5/view/pneumonia')
             await spider_service.crawl(['https://ncov.dxy.cn/ncovh5/view/pneumonia'], None)
     

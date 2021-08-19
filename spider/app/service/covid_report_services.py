@@ -1,6 +1,6 @@
 from typing import List, Any, Coroutine
 from .base_services import BaseAsyncCRUDService
-from ..models.db_models import COVIDReport
+from ..models.db_models import BaiduCOVIDReport
 from ..models.data_models import COVIDReportData
 from ..models.request_models import QueryArgs
 from datetime import datetime
@@ -19,11 +19,11 @@ logger.setLevel(logging.DEBUG)
 
 
 class COVIDReportService(BaseAsyncCRUDService):
-    """ Provides COVIDReport Data Access
+    """ Provides BaiduCOVIDReport Data Access
     """
 
     def __init__(self,
-                 covid_report_db_model: COVIDReport = COVIDReport,
+                 covid_report_db_model: BaiduCOVIDReport = BaiduCOVIDReport,
                  covid_report_data_model: COVIDReportData = COVIDReportData,
                  logger: Logger = getLogger(f"{__name__}.COVIDReportService")):
         self._covid_report_db_model = covid_report_db_model

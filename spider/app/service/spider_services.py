@@ -15,7 +15,7 @@ from ..models.data_models import (
 )
 from ..models.request_models import ScrapeRules, ParseRule
 from ..models.db_models import (
-    Result, Weather, AirQuality, COVIDReport, News
+    Result, Weather, AirQuality, BaiduCOVIDReport, News
 )
 from ..enums import JobType
 from ..core import (
@@ -335,7 +335,7 @@ class BaiduCOVIDSpider(BaseSpiderService):
                  request_client: BaseRequestClient,
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
-                 result_db_model: COVIDReport,
+                 result_db_model: BaiduCOVIDReport,
                  coroutine_runner: Callable = asyncio.gather,
                  event_loop_getter: Callable = asyncio.get_event_loop,
                  process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,

@@ -4,51 +4,32 @@ import sys
 
 from dependency_injector.wiring import inject, Provide
 from dependency_injector import containers, providers
-
-
-from ..service import (
-    WeatherSpiderService,
-    BaiduCOVIDSpider,
-    BaiduNewsSpider,
-    SpiderFactory,
-    WeatherService,
-    AirQualityService,
-    AsyncJobService,
-    SpecificationService,
-    NewsService,
-    COVIDReportService
-)
-
 from .application_container import Application
 from devtools import debug
 
 
 @inject
-async def main(spider_service_dispatcher: WeatherSpiderService = Provide[
-                  Application.spider_dispatching_services.spider_service_dispatcher],
-               job_service: AsyncJobService = Provide[
-                   Application.services.job_service],
-               aqi_service: AirQualityService = Provide[
-                   Application.services.aqi_service],
-               spec_service: SpecificationService = Provide[
-                   Application.services.spec_service],
-               news_service: NewsService = Provide[
-                   Application.services.news_service],
-               covid_report_service: COVIDReportService = Provide[
-                   Application.services.covid_report_service]
-            ):
-
-    weather_spider_service = spider_service_dispatcher.spider_dispatching_services['weather_report']
-    
-    debug(weather_spider_service)
-    # debug(covid_spider_service)
-    # debug(news_spider_service)
-    # debug(aqi_spider_service)
+async def main(spider_service_dispatcher = Provide[
+                   Application.services.spider_dispatcher_container.spider_service_dispatcher],
+               data_services_container = Provide[
+                   Application.services.data_services_container],
+               spider_services_container = Provide[
+                   Application.services.spider_services_container],
+               job_service=Provide[Application.services.job_service],
+               weather_spider_service=Provide[Application.services.spider_services_container.weather_spider_service],
+               air_quality_spider_service=Provide[Application.services.spider_services_container.air_quality_spider_service],
+               baidu_covid_spider_service=Provide[Application.services.spider_services_container.baidu_covid_spider_service],
+               baidu_news_spider_service=Provide[Application.services.spider_services_container.baidu_news_spider_service],
+               dxy_covid_spider_service=Provide[Application.services.spider_services_container.dxy_covid_spider_service]):
+    debug(spider_service_dispatcher)
+    debug(data_services_container)
+    debug(spider_services_container)
     debug(job_service)
-    debug(aqi_service)
-    debug(spec_service)
-    debug(news_service)
-    debug(covid_report_service)
+    debug(weather_spider_service)
+    debug(air_quality_spider_service)
+    debug(baidu_covid_spider_service)
+    debug(baidu_news_spider_service)
+    debug(dxy_covid_spider_service)
 
     await asyncio.sleep(3)
 
@@ -57,15 +38,6 @@ if __name__ == '__main__':
     from ..config import config as app_config
     from devtools import debug
 
-    # service_container = Services()
-    # debug(app_config)
-    # service_container.config.from_dict(app_config)
-    # # service_container.init_resources()
-
-
-    
-    # loop.run_until_complete(main())
-    # service_container.shutdown_resources()
     application = Application()
     debug(app_config)
     application.config.from_dict(app_config)
