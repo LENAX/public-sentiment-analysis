@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
-from ..db_models import BaiduCOVIDReport as COVIDReportDBModel
+# from ..db_models import BaiduCOVIDReport as COVIDReportDBModel
 from devtools import debug
 
 class COVIDReportData(BaseModel):
@@ -55,9 +55,9 @@ class COVIDReportData(BaseModel):
         return hash(self.__repr__())
 
     @classmethod
-    def from_db_model(cls, model_instance: COVIDReportDBModel) -> "COVIDReportData":
+    def from_db_model(cls, model_instance) -> "COVIDReportData":
         debug(model_instance)
         return cls.parse_obj(model_instance)
 
-    def to_db_model(self) -> COVIDReportDBModel:
+    def to_db_model(self):
         pass

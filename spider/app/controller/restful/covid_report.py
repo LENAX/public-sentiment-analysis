@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from ..models.response_models import Response
-from ..models.data_models import COVIDReportData
+from ...models.response_models import Response
+from ...models.data_models import COVIDReportData
 from typing import Optional, List
 from dependency_injector.wiring import inject, Provide
-from ..containers import Application
-from ..service import COVIDReportService
+from ...containers import Application
+from ...service import DXYCovidReportSpiderService
 from datetime import datetime, time, timedelta
 
 import logging
@@ -25,7 +25,8 @@ async def get_report(areaCode: str,
                      endDate: Optional[str] = (datetime.combine((datetime.today()), time.max).isoformat()),
                      returnAllCities: Optional[int] = 1,
                      importedCase: Optional[int] = 0,
-                     covid_report_service: COVIDReportService = Depends(Provide[Application.services.covid_report_service])):
+                     covid_report_service: DXYCovidReportSpiderService = Depends(
+                         Provide[Application.services.spider_services_container.dxy_covid_spider_service])):
     
     covid_report_logger.info(
         f"Received request, areaCode: {areaCode}, startDate: {startDate}, endDate: {endDate}"

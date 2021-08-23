@@ -3,7 +3,6 @@ from typing import Optional
 from ...enums import JobState, JobType
 from uuid import UUID
 from datetime import datetime
-from ..db_models import Job
 from .schedule_model import Schedule
 
 
@@ -29,5 +28,5 @@ class JobData(BaseModel):
         return hash(self.__repr__())
 
     @classmethod
-    def from_db_model(cls, model_instance: Job) -> "JobData":
+    def from_db_model(cls, model_instance) -> "JobData":
         return cls.parse_obj(model_instance)

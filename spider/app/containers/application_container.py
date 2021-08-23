@@ -7,6 +7,7 @@ from dependency_injector import containers, providers
 from .service_containers import Services, SpiderDispatcherContainer
 from .resource_container import ResourceContainer
 from .scheduler_container import SchedulerContainer
+from .rpc_container import RPCContainer
 
 class Application(containers.DeclarativeContainer):
     """Application dependency container
@@ -33,5 +34,10 @@ class Application(containers.DeclarativeContainer):
         Services,
         resources=resources,
         scheduler_container=scheduler
+    )
+    
+    rpc = providers.Container(
+        RPCContainer,
+        config=config.rpc
     )
 

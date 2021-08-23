@@ -4,7 +4,7 @@ import string
 import time
 from fastapi import FastAPI, Request
 from .models.db_models import bind_db_to_all_models
-from .controller.restful import job_controller, covid_report_controller, spider_controller
+from .controller.restful import job, covid_report, spider
 from .config import config
 from .containers.application_container import Application
 
@@ -19,17 +19,16 @@ server_logger.setLevel(logging.DEBUG)
 def create_app() -> FastAPI:
     container = Application()
     container.config.from_dict(config)
-    container.wire(modules=[
-        job_controller, covid_report_controller, spider_controller])
+    container.wire(modules=[job, covid_report, spider])
 
     db_client = container.resources.db_client()
     bind_db_to_all_models(db_client, config['db']['db_name'])
 
     app = FastAPI()
     app.container = container
-    app.include_router(job_controller)
-    app.include_router(covid_report_controller)
-    app.include_router(spider_controller)
+    app.include_router(job.job_controller)
+    app.include_router(covid_report.covid_report_controller)
+    app.include_router(spider.spider_controller)
     
     return app
 

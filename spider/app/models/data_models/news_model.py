@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
-from ..db_models import News as NewsDBModel
+# from ..db_models import News as NewsDBModel
 
 
 class NewsData(BaseModel):
@@ -26,8 +26,5 @@ class NewsData(BaseModel):
         return hash(self.__repr__())
 
     @classmethod
-    def from_db_model(cls, model_instance: NewsDBModel) -> "NewsData":
+    def from_db_model(cls, model_instance) -> "NewsData":
         return cls.parse_obj(model_instance)
-
-    def to_db_model(self) -> NewsDBModel:
-        pass

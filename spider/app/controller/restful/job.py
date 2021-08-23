@@ -1,12 +1,12 @@
 from app.models.request_models.request_models import ScrapeRules
 from fastapi import APIRouter, Depends, HTTPException
-from ..models.response_models import Response
-from ..models.data_models import (
+from ...models.response_models import Response
+from ...models.data_models import (
     JobData, SpecificationData, Schedule, JobStatus)
 from typing import Optional, List, Callable
 from dependency_injector.wiring import inject, Provide
-from ..containers import Application
-from ..service import (
+from ...containers import Application
+from ...service import (
     AsyncJobService,
     DXYCovidReportSpiderService,
     SpecificationService
@@ -59,9 +59,9 @@ async def get_jobs(query: Optional[str] = None,
 async def create_job(specification: SpecificationData,
                      run_crawling_task: Callable = Depends(Provide[
                         Application.rpc.spider_rpc]),
-                     spider_service: DXYCovidReportSpiderService = Depends(Provide[
-                        Application.spider_services.dxy_spider_service]),
-                     spec_service: SpecificationService = Depends(Provide[Application.services.spec_service]),
+                     dxy_spider_service: DXYCovidReportSpiderService = Depends(Provide[
+                         Application.services.spider_services_container.dxy_covid_spider_service]),
+                     spec_service: SpecificationService = Depends(Provide[Application.services.data_services_container.spec_service]),
                      job_service: AsyncJobService = Depends(Provide[Application.services.job_service])):
     # read and validate specification
     try:
@@ -106,7 +106,7 @@ async def create_job(specification: SpecificationData,
             
         job_spec = spec.job_spec
         
-        job_logger.info(f"Use spider {spider_service}")
+        job_logger.info(f"Use spider {dxy_spider_service}")
         job_logger.info(f"run_crawling_task {run_crawling_task}")
         created_job = await job_service.add_job(func=run_crawling_task,
                                                 kwargs={

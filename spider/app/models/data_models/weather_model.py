@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional, Union, Any
 from uuid import UUID
 from datetime import  date, datetime
-from ..db_models import Weather as WeatherDBModel
+# from ..db_models import Weather as WeatherDBModel
 import re
 from dateutil import parser
 from devtools import debug
@@ -38,11 +38,8 @@ class WeatherData(BaseModel):
         return hash(self.__repr__())
 
     @classmethod
-    def from_db_model(cls, model_instance: WeatherDBModel) -> "WeatherData":
+    def from_db_model(cls, model_instance) -> "WeatherData":
         return cls.parse_obj(model_instance)
-
-    def to_db_model(self) -> WeatherDBModel:
-        pass
 
     @validator("date", pre=True)
     def parse_date(cls, value):

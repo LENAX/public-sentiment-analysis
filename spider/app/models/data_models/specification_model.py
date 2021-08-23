@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from datetime import datetime, timedelta
 from ..request_models import ScrapeRules
-from ..db_models import Specification as SpecificationDBModel
+# from ..db_models import Specification as SpecificationDBModel
 from .job_models import JobData
 from ...enums import JobType
 from uuid import UUID
@@ -33,10 +33,10 @@ class SpecificationData(BaseModel):
         return hash(self.__repr__())
 
     @classmethod
-    def from_db_model(cls, model_instance: SpecificationDBModel) -> "SpecificationData":
+    def from_db_model(cls, model_instance) -> "SpecificationData":
         return cls.parse_obj(model_instance)
 
-    def to_db_model(self) -> SpecificationDBModel:
+    def to_db_model(self):
         pass
     
     @validator('urls')

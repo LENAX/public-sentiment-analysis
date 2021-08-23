@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
 from datetime import date
-from ..db_models import AirQuality as AirQualityDBModel
+# from ..db_models import AirQuality as AirQualityDBModel
 
 
 class AirQualityData(BaseModel):
@@ -30,7 +30,7 @@ class AirQualityData(BaseModel):
         return hash(self.__repr__())
 
     @classmethod
-    def from_db_model(cls, model_instance: AirQualityDBModel) -> "AirQualityData":
+    def from_db_model(cls, model_instance) -> "AirQualityData":
         return cls.parse_obj(model_instance)
 
     def to_db_model(self) -> "AirQualityData":
