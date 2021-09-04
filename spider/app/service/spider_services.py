@@ -1,13 +1,11 @@
 import re
 import asyncio
 import dataclasses
-from uuid import uuid5, NAMESPACE_OID
 from functools import partial
 from datetime import datetime, timedelta
-from typing import List, Any, Tuple, Callable, TypeVar, Union, Dict
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from typing import List, Any, Callable, TypeVar, Union, Dict
 from concurrent.futures import ProcessPoolExecutor
-from .base_services import BaseSpiderService, BaseServiceFactory
+from .base_services import BaseSpiderService
 from ..models.data_models import (
     RequestHeader,
     HTMLData,
@@ -17,10 +15,9 @@ from ..models.request_models import ScrapeRules, ParseRule
 from ..models.db_models import (
     Result, Weather, AirQuality, BaiduCOVIDReport, News
 )
-from ..enums import JobType
 from ..core import (
     BaseSpider, ParserContextFactory,
-    BaseRequestClient, AsyncBrowserRequestClient, RequestClient,
+    BaseRequestClient, AsyncBrowserRequestClient,
     CrawlerContextFactory
 )
 from ..utils import throttled
@@ -683,6 +680,9 @@ if __name__ == "__main__":
     from ..models.request_models import (
         ScrapeRules, ParsingPipeline, ParseRule, KeywordRules, TimeRange
     )
+    from ..core import (
+        RequestClient
+    )
     from ..core import Spider
     from yaml import load, dump
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -772,7 +772,7 @@ if __name__ == "__main__":
         # "https://voice.baidu.com/act/newpneumonia/newpneumonia",
         # "https://voice.baidu.com/act/newpneumonia/newpneumonia#tab4"
         # "http://www.baidu.com/s?tn=news&ie=utf-8",
-        "http://www.tianqihoubao.com/aqi"
+        "http://www.tianqihoubao.com/aqi/"
     ]
     print(urls)
     config = load_service_config("aqi_config")
@@ -784,7 +784,7 @@ if __name__ == "__main__":
         db_name=use_db,
         headers=headers.dict(),
         cookies=cookies,
-        client_session_class=AsyncBrowserRequestClient,
+        client_session_class=RequestClient,
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
         crawling_strategy_factory=CrawlerContextFactory,

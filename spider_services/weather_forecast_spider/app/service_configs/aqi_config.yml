@@ -1,0 +1,293 @@
+!!python/object:spider.app.models.request_models.request_models.ScrapeRules
+__dict__:
+  keywords: null
+  max_concurrency: 200
+  max_depth: 1
+  max_pages: null
+  max_retry: 1
+  max_size: null
+  parsing_pipeline:
+  - !!python/object:spider.app.models.request_models.request_models.ParsingPipeline
+    __dict__:
+      name: daily_forecast_parser
+      parse_rules:
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: day
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[1]/text()[1]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: date
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[1]/text()[2]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: morningWeather
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[3]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: morningWindDirection
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[4]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: morningWindScale
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[5]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: highestTemperature
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[6]/div/div[1]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: lowestTemperature
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[6]/div/div[2]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: eveningWeather
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[8]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: eveningWindDirection
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[9]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: eveningWindScale
+          is_link: false
+          rule: //*[@id="dayList"]/div[1]/div[10]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+      parser: !!python/object/apply:spider.app.enums.enum_classes.Parser
+      - link_parser
+    __fields_set__: !!set
+      name: null
+      parse_rules: null
+      parser: null
+  - !!python/object:spider.app.models.request_models.request_models.ParsingPipeline
+    __dict__:
+      name: aqi_extractor
+      parse_rules:
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: title
+          is_link: false
+          rule: //*[@id='content']/h1
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: province
+          is_link: false
+          rule: //*[@id='mnav']/div[1]/a[3]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str:
+          - 0
+          - 2
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: city
+          is_link: false
+          rule: //*[@id='content']/h1
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str:
+          - 7
+          - 9
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+          slice_str: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: date
+          is_link: false
+          rule: //tr/td[1]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: quality
+          is_link: false
+          rule: //tr/td[2]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: AQI
+          is_link: false
+          rule: //tr/td[3]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: AQI_rank
+          is_link: false
+          rule: //tr/td[4]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: PM2.5
+          is_link: false
+          rule: //tr/td[5]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: PM10
+          is_link: false
+          rule: //tr/td[6]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: SO2
+          is_link: false
+          rule: //tr/td[7]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: NO2
+          is_link: false
+          rule: //tr/td[8]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: Co
+          is_link: false
+          rule: //tr/td[9]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider.app.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: O3
+          is_link: false
+          rule: //tr/td[10]
+          rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+          - xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      parser: !!python/object/apply:spider.app.enums.enum_classes.Parser
+      - list_item_parser
+    __fields_set__: !!set
+      name: null
+      parse_rules: null
+      parser: null
+  request_params: {}
+  time_range: !!python/object:spider.app.models.request_models.request_models.TimeRange
+    __dict__:
+      end_date: 2021-04-01 00:00:00
+      past_days: null
+      start_date: 2021-03-01 00:00:00
+    __fields_set__: !!set
+      end_date: null
+      start_date: null
+  url_patterns:
+  - /aqi/\w+-\d{6}.html
+__fields_set__: !!set
+  keywords: null
+  max_concurrency: null
+  max_depth: null
+  parsing_pipeline: null
+  time_range: null
+  url_patterns: null

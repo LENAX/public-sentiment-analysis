@@ -60,7 +60,7 @@ class AsyncBrowserRequestClient(BaseRequestClient):
     async def __init__(self,
                  browser_launcher: Callable = launch,
                  browser_path: str = None,
-                 headless: bool = False,
+                 headless: bool = True,
                  headers: dict = {},
                  cookies: List[dict] = []):
         self._browser_launcher = browser_launcher
@@ -123,7 +123,7 @@ class AsyncBrowserRequestClient(BaseRequestClient):
         await page.setExtraHTTPHeaders(self._headers)
 
         try:
-            response = await page.goto(url, {'timeout': 10000*20})
+            response = await page.goto(url)
             # add js evaluation ability to response.text method
             await self._patch_response(response, page.content)
             yield response
@@ -135,8 +135,8 @@ class AsyncBrowserRequestClient(BaseRequestClient):
     async def launch_browser(self):
         self._browser = await self._browser_launcher(
             browser_path=self._browser_path,
-            headless=self._headless,
-            args=['--no-sandbox', '--proxy-server=localhost:1087'])
+            headless=True,
+            args=['--no-sandbox'])
 
     async def close(self):
         await self._browser.close()
