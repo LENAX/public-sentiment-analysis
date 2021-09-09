@@ -3,6 +3,7 @@ import json
 import asyncio
 from functools import partial
 from datetime import datetime
+from pymongo import InsertOne, DeleteMany, ReplaceOne, UpdateOne
 from typing import List, Callable, Union
 from collections import namedtuple
 from concurrent.futures import ProcessPoolExecutor
@@ -111,233 +112,342 @@ class WeatherForecastSpiderService(BaseSpiderService):
             async with session.get(url) as response:
                 json_data = await response.json()
                 self._logger.info(f"completed requesting {url} of {req_id}")
-                self.resp_data.append(json_data)
+                self.resp_data.append(json_data)           
+    
+    
+    async def _visit_homepage(self, url) -> bool:
+        await self._request_client.launch_browser()
+        page = await self._request_client.browser.newPage()
+        page.on('response', self._make_xhr_interceptor())
+        await page.goto(url, {'timeout': 1000000*20})
 
-    async def crawl(self,
-                    urls: List[str],
-                    rules: ScrapeRules,
-                    compile: Callable = re.compile) -> None:
+        # wait until xhr responses are intercepted
+        attempt = 0
+        while attempt < 100 and len(self._xhr_response) < 2:
+            # the weather website will make two api calls
+            await asyncio.sleep(0.1)
+            attempt += 1
+
+        if len(self._xhr_response) < 2:
+            self._logger.error(
+                f"Expected to receive at least 2 xhr response. Received {len(self._xhr_response)} instead.")
+            return False
+        
+        return True
+    
+    def _get_national_weather_report(self) -> Union[dict, None]:
+        # now there should be at least 2 xhr results
+        national_weather_api_url = [key for key in self._xhr_response.keys()
+                                    if re.search(r'api/map/weather', key)]
+        
+        if len(national_weather_api_url) != 1:
+            self._logger.error(
+                f"Expected to match exactly 1 xhr response, but matched {len(national_weather_api_url)} instead."
+                f"Matched: {national_weather_api_url}"
+                f"XHR responses: {self._xhr_response}")
+            return None
+        
+        national_weather_report_resp = self._xhr_response[national_weather_api_url[0]]
+
+        if not (type(national_weather_report_resp) is dict and
+                'data' in national_weather_report_resp):
+            self._logger.error(
+                f"Expected response having fields data, but it only has {list(national_weather_report_resp.keys())}.")
+            return None
+
+        weather_report_data = national_weather_report_resp['data']
+        if not (type(weather_report_data is dict and
+                'data' in weather_report_data and
+                'msg' in weather_report_data and
+                'status' in weather_report_data)):
+            self._logger.error(
+                f"Expected response data having fields (data, msg, status), but it only has {list(weather_report_data.keys())}."
+                f"weather_report_data: {weather_report_data}")
+            return None
+        
+        if (not self._is_weather_report_valid(weather_report_data)):
+            self._logger.error("Field missing in weather_report_data." 
+                               "Expected to have field data, city."
+                               f"Got {weather_report_data} instead.")
+            return None
+        
+        return weather_report_data['data']['city']
+    
+    def _is_weather_report_valid(self, weather_report_data):
+        return (weather_report_data is not None and
+                weather_report_data['code'] == 0 and
+                weather_report_data['msg'] == 'success' and
+                weather_report_data['data'] is not None and
+                'city' in weather_report_data['data'] and
+                len(weather_report_data['data']['city']) > 0)
+        
+    def _get_today_forecasts(self, weather_data):
+        city_today_forecast_tuple = namedtuple(
+            'city_today_forecast_tuple',
+            ['locationId', 'city', 'country', 'administrativeDivision',
+                "xAxis", "yAxis", "highestTemperature", 'morningWeather', 'weatherIconId',
+                'morningWindDirection', 'morningWindScale', 'lowestTemperature', 'eveningWeather', 'hasWeatherChanged',
+                'eveningWindDirection', 'eveningWindScale', 'unknown', 'areaCode'])
+        
+        self.city_weather_reports = {}
+        for city_weather_data in weather_data:
+            today_forecast_tup = city_today_forecast_tuple._make(city_weather_data)
+            today_forecast = TodayForecast(**today_forecast_tup._asdict())
+            location = Location(**today_forecast_tup._asdict())
+            last_update = weather_data['lastUpdate'] if 'lastUpdate' in weather_data else datetime.now().strftime('%Y/%m/%d %H:%M:%S')
+
+            self.city_weather_reports[today_forecast_tup.locationId] = WeatherReport(
+                todayForecast=today_forecast,
+                location=location,
+                last_update=parser.parse(last_update),
+                create_dt=datetime.now()
+            )
+    
+    def _is_valid_response_data(self, data):
+        return (type(data) is dict and
+                'data' in data and
+                'code' in data and data['code'] == 0 and
+                'msg' in data and data['msg'] == 'success')
+        
+    def _contains_fields(self, data: dict, fields: List[str]) -> bool:
+        return all([(field in data) for field in fields])
+    
+    def _get_city_location(self, weather_report: dict) -> dict:
+        city_location = weather_report['location']
+
+        if not (self._contains_fields(city_location, ['id', 'path']) and
+                type(city_location['id']) is str and
+                type(city_location['path']) is str):
+            self._logger.error("id and path not available!")
+            return {}
+
+        return city_location
+    
+    def _fill_location_data(self, city_location: dict) -> bool:
+        if 'id' not in city_location:
+            return False
+        
+        location_id = city_location['id']
+        country, province, city = city_location['path'].split(',')
+
+        if self.city_weather_reports[location_id].location is not None:
+            self.city_weather_reports[location_id].location.province = province.strip()
+            return True
+        else:
+            self.city_weather_reports[location_id].location = Location(
+                locationId=location_id,
+                city=city,
+                country=country,
+                province=province
+            )
+            self._logger.error(
+                "Failed to fill location data in stage one.")
+            return False
+        
+    def _fill_weather_now(self, weather_report, location_id):
+        if self.city_weather_reports[location_id].weatherNow is None:
+            self.city_weather_reports[location_id].weatherNow = []
+            
+        self.city_weather_reports[location_id].weatherNow.append(
+            WeatherNow(**weather_report['now']))
+        if self.city_weather_reports[location_id].weatherNow is None:
+            self._logger.error(
+                "Failed to fill weather now data in stage one.")
+
+    def _fill_weather_alert(self, weather_report, location_id):
+        if len(weather_report['alarm']) > 0:
+            self.city_weather_reports[location_id].weatherAlerts = [
+                WeatherAlert(**alert) for alert in weather_report['alarm']]
+        else:
+            self.city_weather_reports[location_id].weatherAlerts = []
+
+
+    async def crawl(self, urls: List[str], rules: ScrapeRules):
+        data_today = await self._result_db_model.get({'create_dt': {'$gte': datetime.today().strftime("%Y-%m-%d")}})
+        if data_today is not None and len(data_today) > 0:
+            await self._update_existing_data(rules, data_today)
+        else:
+            await self._crawl_new_data(urls, rules)
+
+
+    async def _update_existing_data(self, rules: ScrapeRules, existing_data: List[WeatherReportDBModel]):
+        """ Update existing weather report by adding new current weather report data
+        """
+        try:
+            weather_reports = {
+                report.location.locationId: report
+                for report in existing_data
+                if report.location is not None and report.location.locationId is not None
+            }
+            weather_report_urls = [
+                f"https://weather.cma.cn/api/now/{locationId}"
+                for locationId in weather_reports]
+
+            self.resp_data: List[dict] = []
+            await self._throttled_fetch(
+                rules.max_concurrency,
+                [self._request_report_api(url, i)
+                 for i, url in enumerate(weather_report_urls)])
+
+            update_operations = []
+            for data in self.resp_data:
+                if not self._is_valid_response_data(data):
+                    continue
+
+                weather_report = data['data']
+                if not (type(weather_report) is dict and
+                        self._contains_fields(weather_report, [
+                            'location', 'now', 'alarm', 'lastUpdate'])):
+                    continue
+                
+                city_location = self._get_city_location(weather_report)
+                if not 'id' in city_location:
+                    continue
+                
+                location_id = city_location['id']
+                weather_now = WeatherNow(**{**weather_report['now'],
+                                            **{'lastUpdate': weather_report['lastUpdate']}})
+                
+                if type(weather_reports[location_id].weatherNow) is list:
+                    weather_reports[location_id].weatherNow.append(weather_now)
+                else:
+                    self._logger.warn("Original weather now list is empty!")
+                    weather_reports[location_id].weatherNow = [weather_now]
+                
+                update_operations.append(UpdateOne(
+                    {"weather_id": weather_reports[location_id].weather_id},
+                    {"$set": {'weatherNow': weather_reports[location_id].weatherNow}}
+                ))
+                
+            await self._result_db_model.bulk_write(update_operations)
+            
+        except Exception as e:
+            self._logger.error(f"{e}")
+
+    async def _crawl_new_data(self, urls: List[str], rules: ScrapeRules) -> None:
         # open a new browser instance
         try:
             if len(urls) < 0:
                 self._logger.warn("No valid URL is provided.")
                 return
             
-            await self._request_client.launch_browser()
-            page = await self._request_client.browser.newPage()
-            page.on('response', self._make_xhr_interceptor())
-            await page.goto(urls[0], {'timeout': 1000000*20})
-            page_src = await page.content()
+            fetch_successful = await self._visit_homepage(urls[0])
             
-            # wait until xhr responses are intercepted
-            attempt = 0
-            while attempt < 100 and len(self._xhr_response) < 2:
-                # the weather website will make two api calls
-                await asyncio.sleep(0.1)
-                attempt += 1
-              
-            if len(self._xhr_response) < 2:
-                self._logger.error(
-                    f"Expected to receive at least 2 xhr response. Received {len(self._xhr_response)} instead.")
+            if not fetch_successful:
                 return
             
-            # now there should be at least 2 xhr results
-            national_weather_api_url = [key for key in self._xhr_response.keys()
-                                        if re.search(r'api/map/weather', key)]
+            weather_data = self._get_national_weather_report()
             
-            if len(national_weather_api_url) != 1:
-                self._logger.error(
-                    f"Expected to match exactly 1 xhr response, but matched {len(national_weather_api_url)} instead."
-                    f"Matched: {national_weather_api_url}"
-                    f"XHR responses: {self._xhr_response}")
+            if weather_data is None:
                 return
             
-            national_weather_report_resp = self._xhr_response[national_weather_api_url[0]]
-            
-            if not (type(national_weather_report_resp) is dict and
-                    'data' in national_weather_report_resp):
-                self._logger.error(
-                    f"Expected response having fields data, but it only has {list(national_weather_report_resp.keys())}.")
-                return
-            
-            weather_report_data = national_weather_report_resp['data']
-            if not (type(weather_report_data is dict and
-                    'data' in weather_report_data and
-                    'msg' in weather_report_data and
-                    'status' in weather_report_data)):
-                self._logger.error(
-                    f"Expected response data having fields (data, msg, status), but it only has {list(weather_report_data.keys())}."
-                    f"weather_report_data: {weather_report_data}")
-                return
-            
-            if (weather_report_data['code'] == 0 and
-                weather_report_data['msg'] == 'success' and
-                weather_report_data['data'] is not None and
-                'city' in weather_report_data['data'] and
-                len(weather_report_data['data']['city']) > 0):
-                weather_data = weather_report_data['data']['city']
-                city_today_forecast_tuple = namedtuple(
-                    'city_today_forecast_tuple',
-                    ['locationId', 'city', 'country', 'administrativeDivision',
-                     "xAxis", "yAxis", "highestTemperature", 'morningWeather', 'weatherIconId',
-                     'morningWindDirection', 'morningWindScale', 'lowestTemperature', 'eveningWeather', 'hasWeatherChanged',
-                     'eveningWindDirection', 'eveningWindScale', 'unknown', 'areaCode'])
+            self._get_today_forecasts(weather_data)
                 
-                self.city_weather_reports = {}
-                for city_weather_data in weather_data:
-                    today_forecast_tup = city_today_forecast_tuple._make(city_weather_data)
-                    today_forecast = TodayForecast(**today_forecast_tup._asdict())
-                    location = Location(**today_forecast_tup._asdict())
-                    last_update = weather_data['lastUpdate'] if 'lastUpdate' in weather_data else datetime.now().strftime('%Y/%m/%d %H:%M:%S')
-
-                    self.city_weather_reports[today_forecast_tup.locationId] = WeatherReport(
-                        todayForecast=today_forecast,
-                        location=location,
-                        last_update=parser.parse(last_update),
-                        create_dt=datetime.now()
-                    )
-                    
-                weather_report_urls = [
-                    f"https://weather.cma.cn/api/now/{locationId}"
-                    for locationId in self.city_weather_reports]
+            weather_report_urls = [
+                f"https://weather.cma.cn/api/now/{locationId}"
+                for locationId in self.city_weather_reports]
+         
+            self.resp_data: List[dict] = []
+            await self._throttled_fetch(
+                rules.max_concurrency,
+                [self._request_report_api(url, i)
+                 for i, url in enumerate(weather_report_urls)])
+            
+            # update city's current weather
+            for data in self.resp_data:
+                if not self._is_valid_response_data(data):
+                    continue
+                
+                weather_report = data['data']
+                if not (type(weather_report) is dict and
+                        self._contains_fields(weather_report, [
+                            'location', 'now', 'alarm', 'lastUpdate'])):
+                    continue
+                
+                city_location = self._get_city_location(weather_report)
+                self._fill_location_data(city_location)
+            
+                if not 'id' in city_location:
+                    continue
+                
+                location_id = city_location['id']
+                self._fill_weather_now(weather_report, location_id)
+                self._fill_weather_alert(weather_report, location_id)
 
                 
-                # resp_data = [self._xhr_response[key]['data'] for key in self._xhr_response
-                #              if re.search(r'api/now', key) and self._xhr_response[key]['status'] == 200]
-                self.resp_data = []
-                await self._throttled_fetch(
-                    rules.max_concurrency,
-                    [self._request_report_api(url, i)
-                     for i, url in enumerate(weather_report_urls)])
-               
-                # update city's current weather
-                for data in self.resp_data:
-                    if (type(data) is dict and
-                        'data' in data and
-                        'code' in data and data['code'] == 0 and
-                        'msg' in data and data['msg'] == 'success'):
-                        weather_report = data['data']
-                        if (type(weather_report) is dict and
-                            'location' in weather_report and
-                            'now' in weather_report and
-                            'alarm' in weather_report and
-                            'lastUpdate' in weather_report):
-                            city_location = weather_report['location']
-                            
-                            if ('id' in city_location and
-                                type(city_location['id']) is str and
-                                'path' in city_location and
-                                type(city_location['path']) is str):
-                                location_id = city_location['id']
-                                country, province, city = city_location['path'].split(',')
-                                
-                                if self.city_weather_reports[location_id].location is not None:
-                                    self.city_weather_reports[location_id].location.province = province.strip()
-                                else:
-                                    self.city_weather_reports[location_id].location = Location(
-                                        locationId=location_id,
-                                        city=city,
-                                        country=country,
-                                        province=province
-                                    )
-                                    self._logger.error("Failed to fill location data in stage one.")
-                            
-                                self.city_weather_reports[location_id].weatherNow = WeatherNow(**weather_report['now'])
-                                if len(weather_report['alarm']) > 0:
-                                    self.city_weather_reports[location_id].weatherAlerts = [
-                                        WeatherAlert(**alert) for alert in weather_report['alarm']]
-                                else:
-                                    self.city_weather_reports[location_id].weatherAlerts = []
-                                    
-                                self._logger.info(
-                                    f"locationId: {location_id}, {self.city_weather_reports[location_id].weatherAlerts}")
-                                self._logger.info(
-                                    f"locationId: {location_id}, {self.city_weather_reports[location_id].weatherNow}")
-                                
-                                if (self.city_weather_reports[location_id].weatherNow is None or 
-                                    self.city_weather_reports[location_id].weatherAlerts is None):
-                                    self._logger.error(
-                                        f"Failed to fill weather data for location id: {location_id}.")
-                                    self._logger.info(
-                                        f"{self.city_weather_reports[location_id]}")
-                            else:
-                                self._logger.error("id and path not available!")
-                        else:
-                            self._logger.error("location, alarm not available!")
-                                
-                            
-                
-                update_time_parser = self._parse_strategy_factory.create(
-                    rules.parsing_pipeline[0].parser)
-                daily_forecast_parser = self._parse_strategy_factory.create(
-                    rules.parsing_pipeline[1].parser)
-                hourly_forecast_parser = self._parse_strategy_factory.create(
-                    rules.parsing_pipeline[2].parser)
-                
-                weather_forecast_urls = [f"https://weather.cma.cn/web/weather/{locationId}"
-                                         for locationId in self.city_weather_reports]
-                
-                await self._throttled_fetch(
-                    rules.max_concurrency,
-                    [self._request_report_page(url, i) for i, url in enumerate(weather_forecast_urls)])
-                
-                for i, result in enumerate(self._page_request_results):
-                    self._logger.info(f"Parsing {i}/{len(self._page_request_results)}")
-                    url, html = result
-                    locationId = url.split('/')[-1].split('.')[0]
-                    city_report = self.city_weather_reports[locationId]
-                    last_update_parse_results = update_time_parser.parse(
-                        html, rules.parsing_pipeline[0].parse_rules)
-                    daily_forecast_parse_results = daily_forecast_parser.parse(
-                        html, rules.parsing_pipeline[1].parse_rules)
-                    hourly_forecast_parse_results = hourly_forecast_parser.parse(
-                        html, rules.parsing_pipeline[2].parse_rules)
-                    
-                    self._logger.info(f"Completed page parsing")
-                    
-                    daily_forecasts = []
-                    for i, daily_forecast_results in enumerate(daily_forecast_parse_results):
-                        result = daily_forecast_results.value
-                        today_forecast = TodayForecast(
-                            **{key: result[key].value for key in result})
-                        
-                        self._logger.info(f"Parsed today_forecast")
-                        # there are 8 hourly forecasts everyday
-                        hourly_forecast_results = [
-                            HourlyForecast(
-                                **{key: hourly_forecast_result.value[key].value for key in hourly_forecast_result.value})
-                            for hourly_forecast_result in hourly_forecast_parse_results[i*8: i*8+7]
-                        ]
-                        for hourly_forecast in hourly_forecast_results:
-                            if type(hourly_forecast.weather) is str:
-                                hourly_forecast.weather = self._weather[int(hourly_forecast.weather)]
-                        
-                        self._logger.info(
-                            f"Constructed hourly_forecast_results")
-                        daily_forecast = DailyForecast(
-                            day=result['day'].value,
-                            date=result['date'].value,
-                            today=today_forecast,
-                            hourlyForecast=hourly_forecast_results
-                        )
-                        daily_forecasts.append(daily_forecast)
-                    
+                if (self.city_weather_reports[location_id].weatherNow is None or 
+                    self.city_weather_reports[location_id].weatherAlerts is None):
+                    self._logger.error(
+                        f"Failed to fill weather data for location id: {location_id}.")
                     self._logger.info(
-                        f"Constructed daily_forecast")
-                    report_update_time = (last_update_parse_results[0].value['lastUpdate'].value
-                                          if len(last_update_parse_results) > 0 else datetime.now())
-
-                    city_report.weeklyForecast = WeeklyWeatherForecast(
-                        data=daily_forecasts,
-                        last_update=report_update_time
-                    )
-                    self._logger.info(
-                        f"Constructed weeklyForecast")
+                        f"{self.city_weather_reports[location_id]}")
                     
-                await self._result_db_model.insert_many(
-                    [self._result_db_model.parse_obj(report)
-                     for report in self.city_weather_reports.values()])
-                self._logger.info('Done!')
+            update_time_parser = self._parse_strategy_factory.create(
+                rules.parsing_pipeline[0].parser)
+            daily_forecast_parser = self._parse_strategy_factory.create(
+                rules.parsing_pipeline[1].parser)
+            hourly_forecast_parser = self._parse_strategy_factory.create(
+                rules.parsing_pipeline[2].parser)
+            
+            weather_forecast_urls = [f"https://weather.cma.cn/web/weather/{locationId}"
+                                        for locationId in self.city_weather_reports]
+            
+            await self._throttled_fetch(
+                rules.max_concurrency,
+                [self._request_report_page(url, i) for i, url in enumerate(weather_forecast_urls)])
+            
+            for i, result in enumerate(self._page_request_results):
+                self._logger.info(f"Parsing {i}/{len(self._page_request_results)}")
+                url, html = result
+                locationId = url.split('/')[-1].split('.')[0]
+                city_report = self.city_weather_reports[locationId]
+                last_update_parse_results = update_time_parser.parse(
+                    html, rules.parsing_pipeline[0].parse_rules)
+                daily_forecast_parse_results = daily_forecast_parser.parse(
+                    html, rules.parsing_pipeline[1].parse_rules)
+                hourly_forecast_parse_results = hourly_forecast_parser.parse(
+                    html, rules.parsing_pipeline[2].parse_rules)
+                
+                daily_forecasts = []
+                for i, daily_forecast_results in enumerate(daily_forecast_parse_results):
+                    result = daily_forecast_results.value
+                    today_forecast = TodayForecast(
+                        **{key: result[key].value for key in result})
+                    
+                    # there are 8 hourly forecasts everyday
+                    hourly_forecast_results = [
+                        HourlyForecast(
+                            **{key: hourly_forecast_result.value[key].value for key in hourly_forecast_result.value})
+                        for hourly_forecast_result in hourly_forecast_parse_results[i*8: i*8+7]
+                    ]
+                    for hourly_forecast in hourly_forecast_results:
+                        if type(hourly_forecast.weather) is str and hourly_forecast.weather.isdigit():
+                            hourly_forecast.weather = self._weather[int(hourly_forecast.weather)]
+
+                    daily_forecast = DailyForecast(
+                        day=result['day'].value,
+                        date=result['date'].value,
+                        today=today_forecast,
+                        hourlyForecast=hourly_forecast_results
+                    )
+                    daily_forecasts.append(daily_forecast)
+                
+                self._logger.info(
+                    f"Constructed daily_forecast")
+                report_update_time = (last_update_parse_results[0].value['lastUpdate'].value
+                                        if len(last_update_parse_results) > 0 else datetime.now())
+
+                city_report.weeklyForecast = WeeklyWeatherForecast(
+                    data=daily_forecasts,
+                    last_update=report_update_time
+                )
+                self._logger.info(
+                    f"Constructed weeklyForecast")
+                
+            await self._result_db_model.insert_many(
+                [self._result_db_model.parse_obj(report)
+                    for report in self.city_weather_reports.values()])
+            self._logger.info('Done!')
                 
         except Exception as e:
             traceback.print_exc()

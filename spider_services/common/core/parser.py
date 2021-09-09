@@ -123,6 +123,9 @@ class ListItemParser(BaseParsingStrategy):
         Returns:
             List[ParseResult]: a list of list items grouped by their attributes.
         """
+        
+        if len(text) == 0:
+            return []
 
         parsed_html = self._parser(text)
         item_attrs = []

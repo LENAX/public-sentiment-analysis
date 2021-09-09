@@ -7,6 +7,7 @@ from ..enums import RequestStatus
 from asyncio import TimeoutError
 from .parser import ParserContext
 from concurrent.futures import ProcessPoolExecutor
+import traceback
 
 SpiderInstance = TypeVar("SpiderInstance")
 
@@ -20,11 +21,12 @@ class BaseSpider(ABC):
 class Spider(BaseSpider):
     """ Core Spider Class for fetching web pages """
 
-    def __init__(self, request_client: BaseRequestClient, url_to_request: str = ""):
+    def __init__(self, request_client: BaseRequestClient, url_to_request: str = "", max_retry: int = 1):
         self._request_client = request_client
         self._request_status = None
         self._url = url_to_request
         self._result = ""
+        self._max_retry = max_retry if type(max_retry) is int else 1
 
     @property
     def result(self):
@@ -43,8 +45,8 @@ class Spider(BaseSpider):
         self._request_status = value
 
     @classmethod
-    def create_from_urls(cls, urls: List[str], request_client: BaseRequestClient) -> List[SpiderInstance]:
-        return [cls(request_client, url) for url in urls]
+    def create_from_urls(cls, urls: List[str], request_client: BaseRequestClient, max_retry: int = 1) -> List[SpiderInstance]:
+        return [cls(request_client, url, max_retry) for url in urls]
 
     def __repr__(self):
         if len(self._result):
@@ -89,31 +91,45 @@ class Spider(BaseSpider):
         """
         assert len(self._url) > 0 or len(url) > 0
         url_to_request = url if len(url) > 0 else self._url
+        request_completed = False
+        n_trial = 0
 
-        try:
-            raw_body = b""
-            async with self._request_client.get(url=url_to_request, params=params) as response:
-                self._request_status = RequestStatus.from_status_code(response.status)
-                if (self._request_status == RequestStatus.NOT_FOUND or 
-                    self._request_status == RequestStatus.FORBIDDEN ):
-                    return url_to_request, self._result
+        while not request_completed and n_trial < self._max_retry:
+            try:
+                raw_body = b""
+                async with self._request_client.get(url=url_to_request, params=params) as response:
+                    self._request_status = RequestStatus.from_status_code(response.status)
+                    if (self._request_status == RequestStatus.NOT_FOUND or 
+                        self._request_status == RequestStatus.FORBIDDEN ):
+                        return url_to_request, self._result
 
-                html_text = await response.text(encoding="utf-8", errors="ignore")
-                
-                # fix garbled text issue
-                if not self._is_mojibake(html_text):
-                    self._result = html_text
-                else:
-                    raw_body = response._body
-                    if raw_body is None:
-                        raw_body = await response.read()
-                    self._result = self._fix_mojibake(raw_body, encoding_detector)
+                    html_text = await response.text(encoding="utf-8", errors="ignore")
                     
-        except TimeoutError as e:
-            self._request_status = RequestStatus.TIMEOUT
-        except Exception as e:
-            print(e)
-            self._request_status = RequestStatus.CLIENT_ERROR
+                    # fix garbled text issue
+                    if not self._is_mojibake(html_text):
+                        self._result = html_text
+                    else:
+                        raw_body = response._body
+                        if raw_body is None:
+                            raw_body = await response.read()
+                        self._result = self._fix_mojibake(raw_body, encoding_detector)
+                        
+                if len(self._result) == 0:
+                    n_trial += 1
+                else:
+                    request_completed = True
+                        
+            except TimeoutError as e:
+                n_trial += 1
+                traceback.print_exc()
+                print(f"Request timed out. Retry: {n_trial}/{self._max_retry}")
+                self._request_status = RequestStatus.TIMEOUT
+            except Exception as e:
+                n_trial += 1
+                traceback.print_exc()
+                print(f"Error while requesting {url_to_request}, exception: {e}")
+                print(f"Retry: {n_trial}/{self._max_retry}")
+                self._request_status = RequestStatus.CLIENT_ERROR
 
         return url_to_request, self._result
 

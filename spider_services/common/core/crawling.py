@@ -74,6 +74,7 @@ class BFSCrawling(BaseCrawlingStrategy):
                  url_queue: Queue,
                  web_page_queue: Queue,
                  max_concurrency: int = 50,
+                 max_retry: int = 10,
                  throttled_fetch: Callable = throttled,
                  re_compile: Callable = re.compile):
         self._request_client = request_client
@@ -86,6 +87,7 @@ class BFSCrawling(BaseCrawlingStrategy):
         self._visited_urls = set()
         self._re_comile = re_compile
         self._max_concurrency = max_concurrency
+        self._max_retry = max_retry
         self._throttled_fetch = throttled_fetch
         self._init_queue()
 
@@ -111,9 +113,11 @@ class BFSCrawling(BaseCrawlingStrategy):
     async def _visit(self, url, depth, path, neighbor_id=None):
         spider = self._spider_class(
             request_client=self._request_client,
-            url_to_request=url
+            url_to_request=url,
+            max_retry=self._max_retry
         )
-        _, result = await spider.fetch()
+        url, result = await spider.fetch()
+        print(f"{url} generated {len(result)}")
         node = CrawlResult(
             id=hash(url),
             url=url,
@@ -227,6 +231,8 @@ class BFSCrawling(BaseCrawlingStrategy):
                 an absolute url foo.com/b/c/d
                 """
                 self._parser.base_url = self._resolve_url_base(node.url)
+                if len(node.page_src) == 0:
+                    continue
                 parsed_links = self._parser.parse(node.page_src, rules)
                 current_depth = self._calculate_depth(node.url)
                 url_filter = self._get_url_filter_or_default(

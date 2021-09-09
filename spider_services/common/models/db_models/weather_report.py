@@ -4,5 +4,6 @@ from .db_model import DBModel
 
 class WeatherReportDBModel(DBModel, WeatherReport):
     __collection__: str = "WeatherReport"
+    
 
 

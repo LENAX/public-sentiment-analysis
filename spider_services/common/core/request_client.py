@@ -35,7 +35,7 @@ class RequestClient(BaseRequestClient):
 
     @contextmanager
     def get(self, url: str, params: dict = {}) -> ResponseContext:
-        return self._client.get(url=url, params=params)
+        yield self._client.get(url=url, params=params)
 
     async def __aenter__(self) -> "ClientSession":
         return self._client
@@ -60,7 +60,7 @@ class AsyncBrowserRequestClient(BaseRequestClient):
     async def __init__(self,
                  browser_launcher: Callable = launch,
                  browser_path: str = None,
-                 headless: bool = True,
+                 headless: bool = False,
                  headers: dict = {},
                  cookies: List[dict] = []):
         self._browser_launcher = browser_launcher

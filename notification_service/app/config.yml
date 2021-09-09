@@ -25,9 +25,26 @@ local_development:
     password: Password_#123
     port: 27017
     db_name: spiderDB
+  rpc:
+    happy_paic_server_url: http://10.11.1.128:9503
+    port: 8000
+    spider_endpoint: /spider/crawl-task
 development:
   <<: *base
 test:
-  <<: *base
+  headers:
+    header_accept: text/html, application/xhtml+xml, application/xml, image/webp, */*
+    user_agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36
+    cookies: ""
+  db:
+    host: '10.9.107.17'
+    username: yiqing_db
+    password: yiqing#123
+    port: 27017
+    db_name: hubei_yiqing
+  rpc:
+    happy_paic_server_url: http://10.11.1.128:9503
+    port: 8000
+    spider_endpoint: /spider/crawl-task
 production:
   <<: *base

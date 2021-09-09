@@ -19,7 +19,7 @@ def create_logger():
 notification_controller = APIRouter()
 
 
-@notification_controller.post('/notification/group-message', tags=["notification"], response_model=Response[str])
+@notification_controller.post('/notification/group-message', tags=["notification"])
 @inject
 async def send_group_message(message: Notification,
                              subscription_service: SubscriptionService = Depends(Provide[
@@ -45,7 +45,7 @@ async def send_group_message(message: Notification,
         return Response(message=f"{e}", statusCode=500, status="failed"), 500
 
 
-@notification_controller.post('/notification/private-message', tags=["notification"], response_model=Response[str])
+@notification_controller.post('/notification/private-message', tags=["notification"])
 @inject
 async def send_private_message(message: Notification,
                                notification_service: HappyPAICNotificationService = Depends(Provide[

@@ -125,6 +125,7 @@ class WeatherNow(BaseModel):
     windDirectionDegree: Optional[int]
     windScale: Optional[str]
     windSpeed: Optional[float]
+    lastUpdate: Optional[str]
 
 
 class Location(BaseModel):
@@ -154,10 +155,10 @@ class WeatherReport(BaseModel):
     weather_id: Optional[UUID] = Field(default_factory=lambda: uuid5(
             NAMESPACE_OID, f"Weather_{datetime.now().timestamp()}"))
     location: Optional[Location]
-    weatherNow: Optional[WeatherNow]
+    weatherNow: Optional[List[WeatherNow]] = []
     todayForecast: Optional[TodayForecast]
     weeklyForecast: Optional[WeeklyWeatherForecast]
-    weatherAlerts: Optional[List[WeatherAlert]]
+    weatherAlerts: Optional[List[WeatherAlert]] = []
     create_dt: Optional[datetime]
     last_update: Optional[datetime]
 

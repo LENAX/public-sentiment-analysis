@@ -1,37 +1,52 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional
 from uuid import UUID
 from datetime import date
 # from ..db_models import AirQuality as AirQualityDBModel
 
 
-class AirQualityData(BaseModel):
+class Location(BaseModel):
+    locationId: Optional[str]
+    areaCode: Optional[str]
+    country: Optional[str]
+    province: Optional[str]
+    city: Optional[str]
+    administrativeDivision: Optional[int]
+
+
+class AirQuality(BaseModel):
     """ Defines an air quality record
   
     """
-    air_quality_id: Optional[UUID]
-    title: Optional[str] = ""
-    province: Optional[str] = ""
-    city: Optional[str] = ""
+    province: Optional[str]
+    city: Optional[str]
     date: Optional[date]
-    quality: Optional[str] = ""
-    AQI: Optional[str] = ""
-    AQI_rank: Optional[str] = ""
-    PM25: Optional[str] = ""
-    PM10: Optional[str] = ""
-    SO2: Optional[str] = ""
-    NO2: Optional[str] = ""
-    Co: Optional[str] = ""
-    O3: Optional[str] = ""
+    quality: Optional[str]
+    aqi: Optional[int]
+    aqi_rank: Optional[int]
+    pm25: Optional[float]
+    pm10: Optional[float]
+    so2: Optional[float]
+    no2: Optional[float]
+    co: Optional[float]
+    o3: Optional[float]
+    
+    @validator("pm25", pre=True)
+    def validate_pm25(cls, value):
+        if type(value) is str and len(value) == 0:
+            return -1.0
+        elif type(value) is str and value.isdigit():
+            return float(value)
+        else:
+            return value
 
-    remark: Optional[str] = ""
 
     def __hash__(self):
         return hash(self.__repr__())
 
     @classmethod
-    def from_db_model(cls, model_instance) -> "AirQualityData":
+    def from_db_model(cls, model_instance) -> "AirQuality":
         return cls.parse_obj(model_instance)
 
-    def to_db_model(self) -> "AirQualityData":
+    def to_db_model(self) -> "AirQuality":
         pass

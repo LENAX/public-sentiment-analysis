@@ -11,7 +11,7 @@ from .crawler_models import CrawlResult
 from .schedule_model import Schedule
 from .job_models import JobData
 from .weather_model import WeatherData
-from .air_quality_model import AirQualityData
+from .air_quality_model import AirQuality
 from .news_model import NewsData
 from .covid_report_model import COVIDReportData
 from .specification_model import SpecificationData
@@ -21,3 +21,4 @@ from .phes_covid_report_model import COVIDReportData as PHESCOVIDReportData
 from .weather_report import (
     WeatherReport, HourlyForecast, TodayForecast, DailyForecast,
     WeeklyWeatherForecast, WeatherNow, Location, WeatherAlert)
+from .cma_weather_report import CMAWeatherReport

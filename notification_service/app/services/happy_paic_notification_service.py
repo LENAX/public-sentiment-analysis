@@ -21,6 +21,7 @@ class HappyPAICNotificationService(BaseAsyncNotificationService):
         self._group_message_api = group_message_api_endpoint
         self._private_message_api = private_message_api_endpoint
         self._logger = logger
+        self._logger.info(f"Happy PAIC service: {happy_paic_server_url}")
     
     async def _send_post_request(self, url: str, data: dict) -> dict:
         try:
@@ -36,6 +37,7 @@ class HappyPAICNotificationService(BaseAsyncNotificationService):
     async def send(self, notification: str, receiver: str) -> bool:
         try:
             private_message_api = f"{self._happy_paic_server_url}/{self._private_message_api}"
+            self._logger.info(f"Sending private message via api {private_message_api}")
             server_response = await self._send_post_request(
                 private_message_api,
                 {'text': notification, 'toUser': receiver})

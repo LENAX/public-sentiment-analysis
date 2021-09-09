@@ -5,7 +5,7 @@ from bson.objectid import ObjectId
 from ..extended_types import PydanticObjectId
 from pydantic import Field
 from uuid import UUID
-
+from datetime import datetime
 
 class DBModel(MongoModel):
     __collection__: str = "Base"
@@ -19,3 +19,4 @@ class DBModel(MongoModel):
     user_id: Optional[UUID]
     project_id: Optional[UUID]
     tenant_id: Optional[UUID]
+    create_dt: datetime = Field(default_factory=lambda: datetime.now())

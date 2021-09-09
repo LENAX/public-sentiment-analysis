@@ -1,0 +1,237 @@
+!!python/object:spider_services.common.models.request_models.request_models.ScrapeRules
+__dict__:
+  api_urls: null
+  keywords: !!python/object:spider_services.common.models.request_models.request_models.KeywordRules
+    __dict__:
+      exclude: []
+      include:
+      - wuhan
+      - shiyan
+      - yichang
+      - ezhou
+      - jinmeng
+      - xiaogan
+      - huanggang
+      - xianning
+      - huangshi
+      - enshi
+      - suizhou
+      - jinzhou
+    __fields_set__: !!set
+      include: null
+  max_concurrency: 500
+  max_depth: 1
+  max_pages: null
+  max_retry: 10
+  max_size: null
+  parsing_pipeline:
+  - !!python/object:spider_services.common.models.request_models.request_models.ParsingPipeline
+    __dict__:
+      name: aqi_link_finder
+      parse_rules:
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: city_link
+          is_link: false
+          rule: //*[@id='content']/div[2]/dl[15]/dd/a|//*[@id='bd']/div[1]/div[3]/ul/li/a
+          rule_type: xpath
+          slice_str:
+          - 7
+          - 23
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+          slice_str: null
+      parser: link_parser
+    __fields_set__: !!set
+      name: null
+      parse_rules: null
+      parser: null
+  - !!python/object:spider_services.common.models.request_models.request_models.ParsingPipeline
+    __dict__:
+      name: aqi_parser
+      parse_rules:
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: province
+          is_link: false
+          rule: //*[@id='mnav']/div[1]/a[3]/text()
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: city
+          is_link: false
+          rule: //*[@id='content']/h1
+          rule_type: xpath
+          slice_str:
+          - 7
+          - 9
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+          slice_str: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: date
+          is_link: false
+          rule: ' //tr/td[1]'
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: quality
+          is_link: false
+          rule: //tr/td[2]
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: aqi
+          is_link: false
+          rule: //tr/td[3]
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: aqi_rank
+          is_link: false
+          rule: //tr/td[4]
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: pm25
+          is_link: false
+          rule: //tr/td[5]
+          rule_type: xpath
+          slice_str:
+          - 0
+          - -1
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+          slice_str: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: pm10
+          is_link: false
+          rule: //tr/td[6]
+          rule_type: xpath
+          slice_str:
+          - 0
+          - -1
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+          slice_str: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: so2
+          is_link: false
+          rule: //tr/td[7]
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: no2
+          is_link: false
+          rule: //tr/td[8]
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: co
+          is_link: false
+          rule: //tr/td[9]
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: o3
+          is_link: false
+          rule: //tr/td[10]
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      parser: list_item_parser
+    __fields_set__: !!set
+      name: null
+      parse_rules: null
+      parser: null
+  - !!python/object:spider_services.common.models.request_models.request_models.ParsingPipeline
+    __dict__:
+      name: province_parser
+      parse_rules:
+      - !!python/object:spider_services.common.models.request_models.request_models.ParseRule
+        __dict__:
+          field_name: province
+          is_link: false
+          rule: //*[@id='content']/div[2]/dl[15]/dt/b/text()
+          rule_type: xpath
+          slice_str: null
+        __fields_set__: !!set
+          field_name: null
+          rule: null
+          rule_type: null
+      parser: list_item_parser
+    __fields_set__: !!set
+      name: null
+      parse_rules: null
+      parser: null
+  request_params: {}
+  time_range: !!python/object:spider_services.common.models.request_models.request_models.TimeRange
+    __dict__:
+      end_date: 2021-09-01 00:00:00
+      past_days: null
+      start_date: 2013-10-01 00:00:00
+    __fields_set__: !!set
+      end_date: null
+      start_date: null
+  url_patterns: null
+__fields_set__: !!set
+  keywords: null
+  max_concurrency: null
+  max_depth: null
+  max_retry: null
+  parsing_pipeline: null
+  time_range: null
