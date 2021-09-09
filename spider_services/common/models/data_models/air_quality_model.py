@@ -2,6 +2,7 @@ from pydantic import BaseModel, validator
 from typing import Optional
 from uuid import UUID
 from datetime import date
+import numpy as np
 # from ..db_models import AirQuality as AirQualityDBModel
 
 
@@ -34,7 +35,16 @@ class AirQuality(BaseModel):
     @validator("pm25", pre=True)
     def validate_pm25(cls, value):
         if type(value) is str and len(value) == 0:
-            return -1.0
+            return np.nan
+        elif type(value) is str and value.isdigit():
+            return float(value)
+        else:
+            return value
+        
+    @validator("pm10", pre=True)
+    def validate_pm10(cls, value):
+        if type(value) is str and len(value) == 0:
+            return np.nan
         elif type(value) is str and value.isdigit():
             return float(value)
         else:

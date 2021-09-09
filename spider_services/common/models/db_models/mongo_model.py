@@ -6,7 +6,6 @@ from ...db import AsyncMongoCRUDBase
 from motor.motor_asyncio import AsyncIOMotorDatabase, AsyncIOMotorCollection
 from uuid import UUID
 from enum import Enum
-from devtools import debug
 import traceback
 
 

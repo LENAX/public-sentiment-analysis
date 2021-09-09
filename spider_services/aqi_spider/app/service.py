@@ -16,7 +16,7 @@ import logging
 from logging import Logger, getLogger
 import traceback
 
-logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%dT%H:%M:%S%z")
 spider_service_logger = logging.getLogger(__name__)
 spider_service_logger.setLevel(logging.DEBUG)
@@ -46,14 +46,9 @@ class AQISpiderService(BaseSpiderService):
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
-        self._crawler_context = crawling_strategy_factory.create(
-            crawl_method, spider_class=spider_class,
-            request_client=request_client,
-            start_url='',
-            max_retry=max_retry,
-            parser_context=parse_strategy_factory.create(
-                parser_name=link_finder, base_url='')
-        )
+        self._crawling_strategy_factory = crawling_strategy_factory
+        self._link_finder = link_finder
+        self._crawl_method = crawl_method
         self._result_db_model = result_db_model
         self._max_retry = max_retry
         self._coroutine_runner = coroutine_runner
@@ -154,6 +149,16 @@ class AQISpiderService(BaseSpiderService):
 
         self._logger.info("Parameters are validated. Prepare crawling...")
 
+        self._crawler_context = self._crawling_strategy_factory.create(
+            self._crawl_method,
+            spider_class=self._spider_class,
+            request_client=self._request_client,
+            start_url='',
+            max_retry=rules.max_retry,
+            parser_context=self._parse_strategy_factory.create(
+                parser_name=self._link_finder, base_url='')
+        )
+
         self._crawler_context.start_url = urls[0]
 
         result_filter = self._get_weather_page_classifier()
@@ -236,7 +241,7 @@ class AQISpiderService(BaseSpiderService):
                     self._logger.error(f"Unabled to parse {daily_weather}, {e}")
                 
 
-        await self._result_db_model.insert_many(parsed_weather_history)
+        # await self._result_db_model.insert_many(parsed_weather_history)
         self._logger.info("Crawl completed!")
 
 

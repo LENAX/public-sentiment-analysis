@@ -1,6 +1,7 @@
 import re
 import json
 import asyncio
+from typing import Any
 from functools import partial
 from datetime import datetime
 from pymongo import InsertOne, DeleteMany, ReplaceOne, UpdateOne
@@ -73,29 +74,23 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
             '浮尘', '日食/雾', '日食/暴雨', '日食/中雪', '日食/浮尘', '日食/大暴雨'
         ]
     
-    def _make_xhr_interceptor(self):
+    async def _make_xhr_interceptor(self, response):
         """ Intercept XHR requests and store the response data
-        """
-        async def intercept_xhr(response, response_store: dict, logger: Any):
-            # In this example, we care only about responses returning JSONs
-            if "application/json" in response.headers.get("content-type", ""):
-                try:
-                    # Print some info about the responses
-                    response_data = await response.json()
-                    response_store[response.url] = {
-                        "url": response.url,
-                        "status": response.status,
-                        "headers": response.headers,
-                        "method": response.request.method,
-                        "data": response_data
-                    }
-                except json.decoder.JSONDecodeError:
-                    # NOTE: Use await response.text() if you want to get raw response text
-                    logger.error("Failed to decode JSON from", await response.text())
-        
-        self._xhr_response = {}
-        return partial(intercept_xhr, response_store=self._xhr_response, logger=self._logger)
-
+        """        
+        if "application/json" in response.headers.get("content-type", ""):
+            try:
+                # Print some info about the responses
+                response_data = await response.json()
+                self._xhr_response[response.url] = {
+                    "url": response.url,
+                    "status": response.status,
+                    "headers": response.headers,
+                    "method": response.request.method,
+                    "data": response_data
+                }
+            except json.decoder.JSONDecodeError:
+                # NOTE: Use await response.text() if you want to get raw response text
+                print("Failed to decode JSON from", await response.text())
 
     async def _request_report_page(self, url, req_id):
         async with aiohttp.ClientSession() as session:
@@ -114,9 +109,10 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
     
     
     async def _visit_homepage(self, url) -> bool:
+        self._xhr_response = {}
         await self._request_client.launch_browser()
-        page = await self._request_client.browser.newPage()
-        page.on('response', self._make_xhr_interceptor())
+        page = await self._request_client._browser.newPage()
+        page.on('response', lambda req: asyncio.ensure_future(self._make_xhr_interceptor(req)))
         await page.goto(url, {'timeout': 1000000*20})
 
         # wait until xhr responses are intercepted
@@ -124,6 +120,7 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
         while attempt < 100 and len(self._xhr_response) < 2:
             # the weather website will make two api calls
             await asyncio.sleep(0.1)
+            self._logger.info(f"len(self._xhr_response): {len(self._xhr_response)}")
             attempt += 1
 
         if len(self._xhr_response) < 2:
@@ -249,10 +246,10 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
 
 
     async def crawl(self, urls: List[str], rules: ScrapeRules):
-        await self._crawl_new_data(urls, rules)
+        await self._crawl_new_data(urls)
 
 
-    async def _crawl_new_data(self, urls: List[str], rules: ScrapeRules) -> None:
+    async def _crawl_new_data(self, urls: List[str]) -> None:
         # open a new browser instance
         try:
             if len(urls) < 0:
@@ -277,7 +274,7 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
          
             self.resp_data: List[dict] = []
             await self._throttled_fetch(
-                rules.max_concurrency,
+                1000,
                 [self._request_report_api(url, i)
                  for i, url in enumerate(weather_report_urls)])
             
@@ -411,6 +408,8 @@ if __name__ == "__main__":
         "https://weather.cma.cn/"
     ]
     config = ScrapeRules(
+        max_concurrency=1000,
+        max_retry=10,
         parsing_pipeline=[
             ParsingPipeline(
                 name="update_time_parser",
@@ -522,6 +521,8 @@ if __name__ == "__main__":
                 )]
         )]
     )
+    
+    # save_config(config, './spider_services/service_configs/cma_weather.yml')
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(test_spider_services(

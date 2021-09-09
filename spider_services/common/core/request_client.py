@@ -69,7 +69,7 @@ class AsyncBrowserRequestClient(BaseRequestClient):
         self._browser = await browser_launcher(
             browser_path=browser_path,
             headless=headless,
-            args=['--no-sandbox', '--proxy-server=localhost:1087'])
+            args=['--no-sandbox'])
         self._headers = headers
         self._cookies = cookies
 

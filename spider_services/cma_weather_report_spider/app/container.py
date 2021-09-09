@@ -10,19 +10,16 @@ from ...common.core import (
 from ...common.models.db_models import CMAWeatherReportDBModel
 from ...common.models.data_models import CMAWeatherReport
 
-from .service import CMAWeatherForecastSpiderService
+from .service import CMAWeatherReportSpiderService
 
 async def make_request_client(headers, cookies):
-    client = await RequestClient(headers=headers, cookies=cookies)
-    yield client
-    await client.close()
+    async with (await RequestClient(headers=headers, cookies=cookies)) as client:
+        yield client
 
 
 async def make_browser_request_client(headers, cookies):
-    client = await AsyncBrowserRequestClient(
-        headers=headers, cookies=[cookies])
-    yield client
-    await client.close()
+    async with (await AsyncBrowserRequestClient(headers=headers, cookies=[cookies])) as client:
+        yield client
 
 
 def make_db_client(db_config):
@@ -61,7 +58,7 @@ class ServiceContainer(containers.DeclarativeContainer):
     resources = providers.DependenciesContainer()
 
     weather_forecast_spider_service = providers.Singleton(
-        CMAWeatherForecastSpiderService,
+        CMAWeatherReportSpiderService,
         request_client=resources.browser_client,
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
@@ -88,4 +85,5 @@ class Application(containers.DeclarativeContainer):
     
     services = providers.Container(
         ServiceContainer,
+        resources=resources,
         config=config)

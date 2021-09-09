@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from ...common.models.db_models import bind_db_to_all_models
 from ...config import config
 from .container import Application
-from .controller import spider_controller
+from . import controller
 import logging
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
@@ -16,13 +16,14 @@ server_logger.setLevel(logging.DEBUG)
 def create_app() -> FastAPI:
     container = Application()
     container.config.from_dict(config)
+    container.wire(modules=[controller])
 
     db_client = container.resources.db_client()
     bind_db_to_all_models(db_client, config['db']['db_name'])
 
     app = FastAPI()
     app.container = container
-    app.include_router(spider_controller)
+    app.include_router(controller.spider_controller)
 
     return app
 

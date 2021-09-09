@@ -117,7 +117,7 @@ class BFSCrawling(BaseCrawlingStrategy):
             max_retry=self._max_retry
         )
         url, result = await spider.fetch()
-        print(f"{url} generated {len(result)}")
+        print(f"{url} returned {len(result)} bytes")
         node = CrawlResult(
             id=hash(url),
             url=url,

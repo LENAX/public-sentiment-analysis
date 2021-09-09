@@ -2,6 +2,7 @@ from .mongo_model import MongoModel
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson.objectid import ObjectId
+from datetime import datetime
 from ..extended_types import PydanticObjectId
 from pydantic import Field
 from uuid import UUID
@@ -19,3 +20,4 @@ class DBModel(MongoModel):
     user_id: Optional[UUID]
     project_id: Optional[UUID]
     tenant_id: Optional[UUID]
+    create_dt: datetime = Field(default_factory=lambda: datetime.now())

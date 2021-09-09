@@ -21,7 +21,7 @@ class BaseSpider(ABC):
 class Spider(BaseSpider):
     """ Core Spider Class for fetching web pages """
 
-    def __init__(self, request_client: BaseRequestClient, url_to_request: str = "", max_retry: int = 1):
+    def __init__(self, request_client: BaseRequestClient, url_to_request: str = "", max_retry: int = 10):
         self._request_client = request_client
         self._request_status = None
         self._url = url_to_request
@@ -45,7 +45,7 @@ class Spider(BaseSpider):
         self._request_status = value
 
     @classmethod
-    def create_from_urls(cls, urls: List[str], request_client: BaseRequestClient, max_retry: int = 1) -> List[SpiderInstance]:
+    def create_from_urls(cls, urls: List[str], request_client: BaseRequestClient, max_retry: int = 10) -> List[SpiderInstance]:
         return [cls(request_client, url, max_retry) for url in urls]
 
     def __repr__(self):

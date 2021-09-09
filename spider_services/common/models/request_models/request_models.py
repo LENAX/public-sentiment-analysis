@@ -124,7 +124,19 @@ class JobSpecification(BaseModel):
 
 class SpiderArgs(BaseModel):
     urls: List[str]
+    start_date: Optional[str]
+    end_date: Optional[str]
     rules: Optional[ScrapeRules]
+
+
+class AQISpiderArgs(BaseModel):
+    url: str = 'http://tianqihoubao.com/aqi/'
+    start_date: Optional[str] = '2013-10-01'
+    end_date: Optional[str] = '2021-09-01'
+    
+class CMAWeatherSpiderArgs(BaseModel):
+    url: str = 'http://weather.cma.cn'
+    
 
 
 class ResultQuery(BaseModel):
