@@ -153,8 +153,15 @@ class ListItemParser(BaseParsingStrategy):
                             attr_value = attr.text_content().strip()
                     
                     if rule.slice_str:
-                        start, end = rule.slice_str
-                        attr_value = attr_value[start: end]
+                        if len(rule.slice_str) == 1:
+                            start = rule.slice_str[0]
+                            attr_value = attr_value[start:]
+                        elif len(rule.slice_str) == 2:
+                            start, end = rule.slice_str
+                            attr_value = attr_value[start: end]
+                        else:
+                            pass
+                        
                     
                     item[rule.field_name] = ParseResult(
                         name=rule.field_name, value=attr_value)

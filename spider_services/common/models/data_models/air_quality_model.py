@@ -31,6 +31,7 @@ class AirQuality(BaseModel):
     no2: Optional[float]
     co: Optional[float]
     o3: Optional[float]
+    lastUpdate: Optional[str]
     
     @validator("pm25", pre=True)
     def validate_pm25(cls, value):

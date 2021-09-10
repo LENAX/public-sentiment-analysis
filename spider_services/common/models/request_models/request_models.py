@@ -100,6 +100,7 @@ class ScrapeRules(BaseModel):
     parsing_pipeline: Optional[List[ParsingPipeline]]
     max_retry: Optional[int] = 1
     max_concurrency: Optional[int] = 50
+    mode: Optional[str]
     request_params: Optional[dict] = {}
 
 
@@ -131,6 +132,7 @@ class SpiderArgs(BaseModel):
 
 class AQISpiderArgs(BaseModel):
     url: str = 'http://tianqihoubao.com/aqi/'
+    mode: str = 'update'
     start_date: Optional[str] = '2013-10-01'
     end_date: Optional[str] = '2021-09-01'
     

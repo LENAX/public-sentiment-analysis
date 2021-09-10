@@ -10,6 +10,7 @@ from ...common.models.request_models import ScrapeRules, ParseRule
 from ...common.models.db_models import Weather, AirQualityDBModel
 from ...common.core import (BaseSpider, ParserContextFactory,
     BaseRequestClient, CrawlerContextFactory)
+from dateutil import parser
 from ...common.utils import throttled
 from itertools import chain
 import logging
@@ -69,7 +70,7 @@ class AQISpiderService(BaseSpiderService):
 
     def _get_weather_page_classifier(
         self,
-        weather_page_url_pattern: re.Pattern = re.compile(r"\/lishi\/(\w+)\/month\/(\w+).html|\/aqi\/(\w+)-\d{6}.html"),
+        weather_page_url_pattern: re.Pattern = re.compile(r"\/lishi\/(\w+)\/month\/(\w+).html|\/aqi\/.*.html"),
         partial: Callable = partial
     ) -> Callable:
         def filter_result_by_pattern(node: CrawlResult, pattern: re.Pattern):
@@ -112,11 +113,118 @@ class AQISpiderService(BaseSpiderService):
                        datetime_class=datetime_class,
                        datetime_pattern='\d{6,8}')
 
+    def _validate_params(self, urls: List[str], rules: ScrapeRules):
+        # validate parameters
+        assert len(urls) > 0
+        assert (
+            len(rules.parsing_pipeline) >= 2 and
+            len(rules.parsing_pipeline[0].parse_rules) > 0 and
+            len(rules.parsing_pipeline[1].parse_rules) > 0)
+
+        assert self._required_fields_included(
+            rules=list(
+                chain(*[rule.parse_rules for rule in rules.parsing_pipeline])),
+            fields_to_include=['province', 'city'])
+
+
+    def _prepare_crawler(self, urls: List[str], rules: ScrapeRules):
+        self._crawler_context = self._crawling_strategy_factory.create(
+            self._crawl_method,
+            spider_class=self._spider_class,
+            request_client=self._request_client,
+            start_url='',
+            max_retry=rules.max_retry,
+            parser_context=self._parse_strategy_factory.create(
+                parser_name=self._link_finder, base_url='')
+        )
+
+        self._crawler_context.start_url = urls[0]
+        
+    def _prepare_filters(self, urls: List[str], rules: ScrapeRules):
+        if rules.url_patterns and len(rules.url_patterns) > 0:
+            pattern = compile(rules.url_patterns[0])
+            result_filter = self._get_weather_page_classifier(
+                weather_page_url_pattern=pattern)
+
+        location_filter = self._get_location_filter(
+            location_names=rules.keywords.include)
+        time_range_filter = self._get_time_range_filter(
+            start_time=rules.time_range.start_date,
+            end_time=rules.time_range.end_date
+        )
+        
+        return location_filter, time_range_filter
+
+    async def _get_target_province_names(self, urls: List[str], rules: ScrapeRules):
+        _, aqi_home_page = await (self._spider_class(
+            request_client=self._request_client, max_retry=rules.max_retry).fetch(urls[0]))
+        province_parser = self._parse_strategy_factory.create(
+            rules.parsing_pipeline[2].parser)
+        province_parse_results = province_parser.parse(
+            aqi_home_page, rules.parsing_pipeline[2].parse_rules)
+        return province_parse_results
+
+    def _parse_historical_aqi(self, rules, pages, province_parse_results):
+        parsed_weather_history = []
+        pipeline = rules.parsing_pipeline[1]
+
+        weather_parser = self._parse_strategy_factory.create(pipeline.parser)
+        for weather_page in pages:
+            page_text = weather_page.page_src
+            parsed_results = weather_parser.parse(
+                page_text, rules=pipeline.parse_rules)
+
+            if len(parsed_results) == 0:
+                self._logger.error(
+                    f"parser generated empty result. input length: {len(page_text)}")
+                continue
+            
+            province = province_parse_results[0].value['province'].value if len(
+                province_parse_results) > 0 else ""
+            city = parsed_results[0].value['city'].value
+            
+            if rules.mode == 'history':
+                parsed_results = parsed_results[1:]
+
+            for row in parsed_results:
+                row_values = row.value
+                row_values['province'].value = province
+                row_values['city'].value = city
+
+                for key in row_values:
+                    if key == 'lastUpdate':
+                        row_values[key].value = parser.parse(
+                            row_values[key].value).strftime("%Y-%m-%d %H:%M:%S")
+                    else:
+                        row_values[key].value = row_values[key].value.replace(
+                            "\r\n ", "").replace(" ", "")
+
+            for daily_weather in parsed_results:
+                try:
+                    weather_record = self._result_db_model.parse_obj(
+                        daily_weather.value_to_dict())
+                    parsed_weather_history.append(weather_record)
+                    self._logger.debug(f"{weather_record}")
+                except Exception as e:
+                    traceback.print_exc()
+                    self._logger.error(
+                        f"Unabled to parse {daily_weather}, {e}")
+        
+        return parsed_weather_history
+
     async def crawl(self,
                     urls: List[str],
                     rules: ScrapeRules,
                     compile: Callable = re.compile,
                     chain: Callable = chain) -> None:
+        if len(urls) == 0:
+            return
+        
+        aqi_reports = await self._crawl_aqi(urls, rules)
+        await self._result_db_model.insert_many(aqi_reports)
+        
+    async def _crawl_aqi(self, urls: List[str], rules: ScrapeRules,
+                         compile: Callable = re.compile, chain: Callable = chain) -> List[AirQualityDBModel]:
         """ Crawls weather report site in the given manner
         
         This spider expects users to provide city names to scrape weather
@@ -136,60 +244,27 @@ class AQISpiderService(BaseSpiderService):
         
         """
         # validate parameters
-        assert len(urls) > 0
-        assert (
-            len(rules.parsing_pipeline) >= 2 and
-            len(rules.parsing_pipeline[0].parse_rules) > 0 and
-            len(rules.parsing_pipeline[1].parse_rules) > 0)
-
-        assert self._required_fields_included(
-            rules=list(
-                chain(*[rule.parse_rules for rule in rules.parsing_pipeline])),
-            fields_to_include=['province', 'city'])
+        try:
+            self._validate_params(urls, rules)
+        except AssertionError as e:
+            self._logger.error(f"Failed to validate parameters. {e}")
 
         self._logger.info("Parameters are validated. Prepare crawling...")
 
-        self._crawler_context = self._crawling_strategy_factory.create(
-            self._crawl_method,
-            spider_class=self._spider_class,
-            request_client=self._request_client,
-            start_url='',
-            max_retry=rules.max_retry,
-            parser_context=self._parse_strategy_factory.create(
-                parser_name=self._link_finder, base_url='')
-        )
-
-        self._crawler_context.start_url = urls[0]
+        self._prepare_crawler(urls, rules)
 
         result_filter = self._get_weather_page_classifier()
-
-        if rules.url_patterns and len(rules.url_patterns) > 0:
-            pattern = compile(rules.url_patterns[0])
-            result_filter = self._get_weather_page_classifier(
-                weather_page_url_pattern=pattern)
-
-        location_filter = self._get_location_filter(
-            location_names=rules.keywords.include)
-        time_range_filter = self._get_time_range_filter(
-            start_time=rules.time_range.start_date,
-            end_time=rules.time_range.end_date
-        )
-
+        work_mode = rules.mode if hasattr(rules, 'mode') else 'history'
+        
         self._logger.info("Start crawling...")
         
-        _, aqi_home_page = await (self._spider_class(
-            request_client=self._request_client, max_retry=rules.max_retry).fetch(urls[0]))
-        province_parser = self._parse_strategy_factory.create(
-            rules.parsing_pipeline[2].parser)
-        province_parse_results = province_parser.parse(
-            aqi_home_page, rules.parsing_pipeline[2].parse_rules)
+        province_parse_results = await self._get_target_province_names(urls, rules)
+        location_filter, time_range_filter = self._prepare_filters(urls, rules)
+        url_filters = [location_filter, time_range_filter] if work_mode == 'history' else [location_filter]
 
         weather_pages = await self._crawler_context.crawl(
             rules=rules.parsing_pipeline[0].parse_rules,
-            url_filter_functions=[
-                location_filter,
-                time_range_filter
-            ],
+            url_filter_functions=url_filters,
             max_depth=rules.max_depth,
             result_filter_func=result_filter
         )
@@ -202,47 +277,14 @@ class AQISpiderService(BaseSpiderService):
                 f"Fetched {len(weather_pages)} results from target site.")
             return
 
-        
         self._logger.info(f"Start parsing results...")
-
-        parsed_weather_history = []
-        pipeline = rules.parsing_pipeline[1]
-        
-        weather_parser = self._parse_strategy_factory.create(pipeline.parser)
-        for weather_page in weather_pages:
-            page_text = weather_page.page_src
-            parsed_results = weather_parser.parse(
-                page_text, rules=pipeline.parse_rules)
-            
-            if len(parsed_results) == 0:
-                self._logger.error(
-                    f"parser generated empty result. input length: {len(page_text)}")
-                continue
-            
-            weather_table_title = parsed_results[0]
-            province = province_parse_results[0].value['province'].value if len(
-                province_parse_results) > 0 else ""
-            city = weather_table_title.value['city'].value
-            for row in parsed_results[1:]:
-                row_values = row.value
-                row_values['province'].value = province
-                row_values['city'].value = city
-
-                for parsed_result in row_values.values():
-                    parsed_result.value = parsed_result.value.replace("\r\n ", "").replace(" ", "")
-
-            for daily_weather in parsed_results[1:]:
-                try:
-                    weather_record = self._result_db_model.parse_obj(daily_weather.value_to_dict())
-                    parsed_weather_history.append(weather_record)
-                    self._logger.debug(f"{weather_record}")
-                except Exception as e:
-                    traceback.print_exc()
-                    self._logger.error(f"Unabled to parse {daily_weather}, {e}")
-                
-
-        # await self._result_db_model.insert_many(parsed_weather_history)
+        parsed_weather_history = self._parse_historical_aqi(
+            rules, weather_pages, province_parse_results)
         self._logger.info("Crawl completed!")
+        return parsed_weather_history
+
+        
+        
 
 
 if __name__ == "__main__":
@@ -342,17 +384,15 @@ if __name__ == "__main__":
     print(urls)
     config = ScrapeRules(
         keywords=KeywordRules(
-            # include=[
-            #     "wuhan", "shiyan", "yichang", "ezhou", "jinmeng", "xiaogan",
-            #     "huanggang", 'xianning', "huangshi", 'enshi', 'suizhou', 'jinzhou'
-            # ],
             include=[
-                "wuhan"
+                "wuhan", "shiyan", "yichang", "ezhou", "jinmeng", "xiaogan",
+                "huanggang", 'xianning', "huangshi", 'enshi', 'suizhou', 'jinzhou'
             ]
         ),
         max_concurrency=500,
         max_depth=1,
-        max_retry=5,
+        max_retry=10,
+        mode='update',
         time_range=TimeRange(
             start_date=parser.parse('2021-08-01'),
             end_date=parser.parse('2021-09-01')
@@ -364,7 +404,7 @@ if __name__ == "__main__":
                 parse_rules=[
                     ParseRule(
                         field_name='city_link',
-                        rule="//*[@id='content']/div[2]/dl[15]/dd/a|//*[@id='bd']/div[1]/div[3]/ul/li/a",
+                        rule="//*[@id='content']/div[2]/dl[15]/dd/a",
                         rule_type='xpath',
                         slice_str=[7, 23]
                     )
@@ -381,47 +421,55 @@ if __name__ == "__main__":
                         field_name='city',
                         rule="//*[@id='content']/h1",
                         rule_type='xpath',
-                        slice_str=[7, 9]
+                        slice_str=[0, -19]
                     ), ParseRule(
                         field_name='date',
-                        rule=" //tr/td[1]",
-                        rule_type='xpath'
+                        rule="//*[@id='content']/div[1]",
+                        rule_type='xpath',
+                        slice_str=[8, 18]
+                    ), ParseRule(
+                        field_name='lastUpdate',
+                        rule="//*[@id='content']/div[1]",
+                        rule_type='xpath',
+                        slice_str=[8, 26]
                     ), ParseRule(
                         field_name='quality',
-                        rule="//tr/td[2]",
+                        rule="//*[@id='today-quality']/div[1]/div[1]/div[2]",
                         rule_type='xpath'
                     ), ParseRule(
                         field_name='aqi',
-                        rule="//tr/td[3]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='aqi_rank',
-                        rule="//tr/td[4]",
+                        rule="//*[@id='today-quality']/div[1]/div[1]/div[1]",
                         rule_type='xpath'
                     ), ParseRule(
                         field_name='pm25',
-                        rule="//tr/td[5]",
-                        rule_type='xpath'
+                        rule="//*[@id='today-quality']/div[2]/ul/li[1]",
+                        rule_type='xpath',
+                        slice_str=[6]
                     ), ParseRule(
                         field_name='pm10',
-                        rule="//tr/td[6]",
-                        rule_type='xpath'
+                        rule="//*[@id='today-quality']/div[2]/ul/li[4]",
+                        rule_type='xpath',
+                        slice_str=[6, -5]
                     ), ParseRule(
                         field_name='so2',
-                        rule="//tr/td[7]",
-                        rule_type='xpath'
+                        rule="//*[@id='today-quality']/div[2]/ul/li[3]/text()[1]",
+                        rule_type='xpath',
+                        slice_str=[5, -4]
                     ), ParseRule(
                         field_name='no2',
-                        rule="//tr/td[8]",
-                        rule_type='xpath'
+                        rule="//*[@id='today-quality']/div[2]/ul/li[6]",
+                        rule_type='xpath',
+                        slice_str=[5, -5]
                     ), ParseRule(
                         field_name='co',
-                        rule="//tr/td[9]",
-                        rule_type='xpath'
+                        rule="//*[@id='today-quality']/div[2]/ul/li[2]",
+                        rule_type='xpath',
+                        slice_str=[5]
                     ), ParseRule(
                         field_name='o3',
-                        rule="//tr/td[10]",
-                        rule_type='xpath'
+                        rule="//*[@id='today-quality']/div[2]/ul/li[5]",
+                        rule_type='xpath',
+                        slice_str=[3]
                     )
                 ]), ParsingPipeline(
                     name="province_parser",
@@ -435,19 +483,20 @@ if __name__ == "__main__":
                     ]
             )]
     )
+    # save_config(config, './spider_services/service_configs/aqi_daily.yml')
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(test_spider_services(
-        db_client=db_client,
-        db_name=use_db,
-        headers=headers.dict(),
-        cookies=cookies,
-        client_session_class=RequestClient,
-        spider_class=Spider,
-        parse_strategy_factory=ParserContextFactory,
-        crawling_strategy_factory=CrawlerContextFactory,
-        spider_service_class=AQISpiderService,
-        result_model_class=AirQualityDBModel,
-        test_urls=urls,
-        rules=config
-    ))
+    # loop = asyncio.get_event_loop()
+    # loop.run_until_complete(test_spider_services(
+    #     db_client=db_client,
+    #     db_name=use_db,
+    #     headers=headers.dict(),
+    #     cookies=cookies,
+    #     client_session_class=RequestClient,
+    #     spider_class=Spider,
+    #     parse_strategy_factory=ParserContextFactory,
+    #     crawling_strategy_factory=CrawlerContextFactory,
+    #     spider_service_class=AQISpiderService,
+    #     result_model_class=AirQualityDBModel,
+    #     test_urls=urls,
+    #     rules=config
+    # ))

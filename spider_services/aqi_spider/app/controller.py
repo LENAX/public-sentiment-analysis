@@ -22,7 +22,8 @@ def create_logger():
 
 
 def load_aqi_config():
-    return load_service_config('aqi_config')
+    return {"history": load_service_config('aqi_config'),
+            "update": load_service_config('aqi_daily')}
 
 aqi_spider_controller = APIRouter()
 
@@ -37,7 +38,7 @@ async def check_status():
 @inject
 async def crawl_aqi_report(args: AQISpiderArgs,
                            background_tasks: BackgroundTasks,
-                           rules: ScrapeRules = Depends(load_aqi_config),
+                           config: ScrapeRules = Depends(load_aqi_config),
                            spider_service: AQISpiderService = Depends(Provide[
                                 Application.services.aqi_spider_service]),
                            spider_logger: Logger = Depends(create_logger)):
@@ -46,7 +47,7 @@ async def crawl_aqi_report(args: AQISpiderArgs,
             spider_logger.error(f"No url is specified.")
             return Response(message="url should be specified", statusCode=400, status="failed")
         
-        
+        rules = config.get(args.mode, 'update')
         start_date = parser.parse(args.start_date) if type(args.start_date) is str else rules.time_range.start_date
         end_date = parser.parse(args.end_date) if type(args.end_date) is str  else rules.time_range.end_date
         rules.time_range = TimeRange(start_date=start_date, end_date=end_date)
