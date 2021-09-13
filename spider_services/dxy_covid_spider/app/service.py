@@ -3,7 +3,7 @@ from typing import List, Any, Callable
 from ...common.service.base_services import BaseSpiderService
 from ...common.models.db_models import PHESCOVIDReport
 from ...common.models.request_models import ScrapeRules
-from ...common.models.data_models import DXYCOVIDReportData, COVIDReportData
+from ...common.models.data_models import DXYCOVIDReportData, PHESCOVIDReportData, DangerArea
 from ...common.core import AsyncBrowserRequestClient
 from ...common.utils import throttled
 from lxml import etree
@@ -30,7 +30,7 @@ class DXYCovidReportSpiderService(BaseSpiderService):
     def __init__(self,
                  request_client: AsyncBrowserRequestClient,
                  result_db_model: PHESCOVIDReport,
-                 result_data_model: COVIDReportData,
+                 result_data_model: PHESCOVIDReportData,
                  throttled_fetch: Callable = throttled,
                  logger: Logger = spider_service_logger):
         self._browser_request_client = request_client
@@ -113,6 +113,7 @@ class DXYCovidReportSpiderService(BaseSpiderService):
                             otherHasIncreased=-1,
                             suspectCount=report.suspectedCount,
                             suspectIncrease=report.suspectedCountIncr,
+                            dangerAreas=[DangerArea.parse_obj(area) for area in report.dangerAreas if report.dangerAreas is not None],
                             highDangerZoneCount=report.highDangerCount,
                             midDangerZoneCount=report.midDangerCount,
                             isImportedCase=False,
@@ -131,134 +132,198 @@ class DXYCovidReportSpiderService(BaseSpiderService):
             traceback.print_exc()
             self._logger.error(e)
             raise e
+    
+    
+    def _get_national_increase(self, page) -> int:
+        national_increase_text = page.xpath(
+            "//*[@id='root']/div/div[2]/div[2]/div[1]/div[1]/div[1]/div[1]/span//text()")
+        national_increase = -1
+        if len(national_increase_text) and national_increase_text[0].startswith("全国｜新增确诊"):
+            national_increase_match = re.findall(
+                r"\d+", national_increase_text[0])
+            national_increase = int(national_increase_match[0]) if len(
+                national_increase_match) > 0 else -1
+        return national_increase
+
+    def _get_last_update_dt(self, page) -> str:
+        last_update_text = page.xpath(
+            "//*[@id='root']/div/div[3]/div[5]/div[1]/div[2]/span/text()[1]")
+        yesterday = datetime.combine(
+            (datetime.today() - timedelta(1)), time.min)
+
+        last_update = yesterday.strftime("%Y-%m-%dT%H:%M:%S")
+        if len(last_update_text):
+            last_update = last_update_text[0][6:]
+            
+        return last_update
+    
+    def _get_record_date(self, last_update: str) -> str:
+        recordDate = datetime.combine(parser.parse(
+            last_update[:10]) - timedelta(1), time.min).strftime("%Y-%m-%dT%H:%M:%S")
+        return recordDate
+    
+    async def _get_area_stats(self, page):
+        provincial_report_data = await page.evaluate(
+            """
+            () => {
+                return window.getAreaStat
+            }
+            """)
+        covid_report = [DXYCOVIDReportData.parse_obj(report)
+                        for report in provincial_report_data]
         
+        return covid_report
+    
+    async def _fetch_covid_data(self, url: str):
+        await self._browser_request_client.launch_browser()
+        page = await self._browser_request_client.browser.newPage()
+        page.setDefaultNavigationTimeout(10000000)
+        await page.goto(url, {'timeout': 10000*20})
+        page_src = await page.content()
+        parsed_page = etree.HTML(page_src)
+        
+        national_increase = self._get_national_increase(parsed_page)
+        last_update = self._get_last_update_dt(parsed_page)
+        record_date = self._get_record_date(last_update)
+        covid_report = await self._get_area_stats(page)
+
+        await self._browser_request_client.close()
+        
+        return covid_report, last_update, record_date, national_increase
+    
+    async def _get_tm1_report(self, record_date):
+        report_tm1 = await self._result_db_model.get(
+            {"recordDate": {
+                "$gte": (parser.parse(record_date) - timedelta(1)).strftime("%Y-%m-%d"),
+                "$lt": parser.parse(record_date).strftime("%Y-%m-%d")
+            }})
+
+        report_df_tm1 = pd.DataFrame([report.dict() for report in report_tm1])
+        return report_df_tm1
+    
+    def _get_provincial_stat(self, report_df, province_name):
+        if 'province' not in report_df:
+            return None
+        
+        provincial_stat = report_df.query(
+            """
+            (province == @province_name) and (city.isnull())
+            """, engine="python")
+        return provincial_stat
+    
+    def _get_city_stat(self, report_df, province_name, city_name):
+        if 'province' not in report_df:
+            return None
+
+        city_stat = report_df.query(
+            """
+            (province == @province_name) and (city == @city_name)
+            """
+        )
+        return city_stat
+        
+        
+    def _get_city_report(self, report_today, city_name):
+        city_reports = report_today.cities
+        
+        for city_report in city_reports:
+            if city_report.cityName == city_name:
+                return city_report
+            
+        return None
+        
+    def _get_provincial_local_cumulative_case(self, report_today, imported_case_today, local_report_tm1, imported_case_tm1):
+        fields_validated = all([
+            report_today is not None and hasattr(report_today, 'confirmedCount') and type(report_today.confirmedCount) is int,
+            (imported_case_today is not None and hasattr(imported_case_today, 'confirmedCount') and
+             type(imported_case_today.confirmedCount) is int),
+            (local_report_tm1 is not None and hasattr(local_report_tm1, "localNowReported") and
+             local_report_tm1.localNowReported is not None and len(local_report_tm1.localNowReported.values) > 0 and
+             not np.isnan(local_report_tm1.localNowReported.values[0])),
+            (imported_case_tm1 is not None and hasattr(imported_case_tm1, "foreignNowReported") and
+             imported_case_tm1.foreignNowReported is not None and len(imported_case_tm1.foreignNowReported.values) > 0 and
+             not np.isnan(imported_case_tm1.foreignNowReported.values[0])),
+        ])
+    
+        if not fields_validated:
+            return -1
+        
+        localReported = report_today.confirmedCount - imported_case_today.confirmedCount
+        # localIncreased = localReported - local_report_tm1.localNowReported.values[0]
+        
+        return localReported
 
     async def crawl(self, urls: List[str], rules: ScrapeRules, *args, **kwargs) -> Any:
         """ Crawl COVID Report from 丁香园
         """
         try:
-            await self._browser_request_client.launch_browser()
-            page = await self._browser_request_client.browser.newPage()
-            page.setDefaultNavigationTimeout(10000000)
-            await page.goto(urls[0], {'timeout': 10000*20})
-            page_src = await page.content()
-            parsed_page = etree.HTML(page_src)
-            last_update_text = parsed_page.xpath(
-                "//*[@id='root']/div/div[3]/div[5]/div[1]/div[2]/span/text()[1]")
-            today = datetime.today().strftime("%Y-%m-%d")
-            yesterday = datetime.combine((datetime.today() - timedelta(1)), time.min)
+            if len(urls) == 0:
+                self._logger.error(f"No url is provided.")
+                return
             
-            last_update = yesterday.strftime("%Y-%m-%dT%H:%M:%S")
-            if len(last_update_text):
-                last_update = last_update_text[0][6:]
+            covid_report, last_update, recordDate, national_increase = await self._fetch_covid_data(urls[0])
             
-            recordDate = datetime.combine(parser.parse(
-                last_update[:10]) - timedelta(1), time.min).strftime("%Y-%m-%dT%H:%M:%S")
-            provincial_report_data = await page.evaluate(
-                """
-                () => {
-                    return window.getAreaStat
-                }
-                """)
-            await self._browser_request_client.close()
-            
-            covid_report = [DXYCOVIDReportData.parse_obj(report)
-                            for report in provincial_report_data]
-            national_increase_text = parsed_page.xpath(
-                "//*[@id='root']/div/div[2]/div[2]/div[1]/div[1]/div[1]/div[1]/span//text()")
-            national_increase = -1
-            if len(national_increase_text) and national_increase_text[0].startswith("全国｜新增确诊"):
-                national_increase_match = re.findall(
-                    r"\d+", national_increase_text[0])
-                national_increase = int(national_increase_match[0]) if len(national_increase_match) > 0 else -1
-            
-            report_tm1 = await self._result_db_model.get(
-                {"recordDate": {
-                    "$gte": (parser.parse(recordDate) - timedelta(1)).strftime("%Y-%m-%d"),
-                    "$lt": parser.parse(recordDate).strftime("%Y-%m-%d")
-                }})
-            
-            report_df_tm1 = pd.DataFrame([report.dict() for report in report_tm1])
+            report_df_tm1 = await self._get_tm1_report(recordDate)
             report_t = await self._result_db_model.get({
                 'recordDate': {
                     "$gte": parser.parse(recordDate).strftime("%Y-%m-%d"),
                     '$lt': (parser.parse(recordDate) + timedelta(1)).strftime("%Y-%m-%d"),
                 }})
-            self._logger.info(report_df_tm1)
-            self._logger.info(covid_report[0])
-            self._logger.info(f"report_tm1 recordDate first: {report_df_tm1.recordDate.iloc[0]}")
-            self._logger.info(
-                f"report_tm1 recordDate last: {report_df_tm1.recordDate.iloc[-1]}")
-            self._logger.info(f"report_tm1 size: {len(report_tm1)}")
-            self._logger.info(
-                f"report_t recordDate: {recordDate}")
-            self._logger.info(f"report_t size: {len(report_t)}")
             
             should_update_report = (
-                len(report_t) > 0 and
+                len(report_t) >  0 and
                 len(covid_report) > 0)
             
-            self._logger.info(f"fetched report size: {len(covid_report)}")
-            self._logger.info(f"should_update_report: {should_update_report}")
-            
+            provincial_reports = []
             provincial_report_write_requests = []
             city_reports_write_requests = []
             imported_case_write_requests = []
             
             for report in covid_report:
-                # provincial data
-                if 'province' in report_df_tm1:
-                    provincial_tm1 = report_df_tm1.query(
-                        """
-                        (province == @report.provinceName) and (city.isnull())
-                        """, engine="python")
-                    importedCase_tm1 = report_df_tm1.query(
-                        """
-                        (province == @report.provinceName) and (city == '境外输入')
-                        """
-                    )
-                else:
-                    provincial_tm1 = None
-                    importedCase_tm1 = None
-                    
-                provincial_case_increase = (
-                    report.confirmedCount - provincial_tm1.localNowReported.values[0]
-                    if provincial_tm1 is not None and len(provincial_tm1.localNowReported) else -1)
-                importedCases = [
-                    city_report for city_report in report.cities if city_data.cityName == '境外输入']
+                # get yesterday's report according to today's data
+                provincial_report_tm1 = self._get_provincial_stat(report_df_tm1, report.provinceName)
+                importedCase_tm1 = self._get_city_stat(report_df_tm1, report.provinceName, '境外输入')
                 
-                nowExistingImportedCases = importedCases[0].currentConfirmedCount if len(importedCases) > 0 else 0
+                if importedCase_tm1 is None:
+                    importedCase_tm1 = self._get_city_stat(report_df_tm1, report.provinceName, '境外输入人员')
                 
+                imported_case_today = self._get_city_report(report, '境外输入')
+                if imported_case_today is None:
+                    importedCase_tm1 = self._get_city_stat(
+                        report_df_tm1, report.provinceName, '境外输入人员')
+                
+                if any([provincial_report_tm1 is None, importedCase_tm1 is None, imported_case_today is None]):
+                    self._logger.error(f'Cannot find reports of {report.provinceName} from yesterday!')
+                    continue
+                
+                provincial_local_cases = self._get_provincial_local_cumulative_case(
+                    report, imported_case_today, provincial_report_tm1, importedCase_tm1)
+                localIncreased = provincial_local_cases - provincial_report_tm1.localNowReported.values[0]
+                
+                nowExistingImportedCases = imported_case_today.currentConfirmedCount
                 localNowExistedCases = report.currentConfirmedCount - nowExistingImportedCases
-                
-                self._logger.info(
-                    f"importedCases: {importedCases}")
-                self._logger.info(
-                    f"nowExistingImportedCases: {nowExistingImportedCases}")
-                self._logger.info(
-                    f"recordDate: {recordDate}, lastUpdate: {last_update}")
                 
                 provincial_report = self._result_db_model(
                     province=report.provinceName,
                     city=None,
                     areaCode=report.locationId,
-                    localNowReported=report.confirmedCount,         
+                    localNowReported=provincial_local_cases,
                     localNowExisted=localNowExistedCases if not np.isnan(
                         localNowExistedCases) else report.currentConfirmedCount,
-                    localIncreased=provincial_case_increase,
-                    otherHasIncreased=1 if national_increase > provincial_case_increase else 0,
+                    localIncreased=localIncreased,
+                    otherHasIncreased=1 if national_increase > localIncreased else 0,
                     localNowCured=report.curedCount,
                     localNowCuredIncrease=(
-                        report.curedCount - provincial_tm1.localNowCured.values[0]
-                        if provincial_tm1 is not None and len(provincial_tm1.localNowCured) else -1),
+                        report.curedCount - imported_case_today.curedCount - provincial_report_tm1.localNowCured.values[0]
+                        if provincial_report_tm1 is not None and len(provincial_report_tm1.localNowCured) else -1),
                     localNowDeath=report.deadCount,
                     localDeathIncrease=(
-                        report.deadCount - provincial_tm1.localNowDeath.values[0]
-                        if provincial_tm1 is not None and len(provincial_tm1.localNowDeath) else -1),
+                        report.deadCount - imported_case_today.deadCount - provincial_report_tm1.localNowDeath.values[0]
+                        if provincial_report_tm1 is not None and len(provincial_report_tm1.localNowDeath) else -1),
                     suspectCount=report.suspectedCount,
                     suspectIncrease=(
-                        report.suspectedCount - provincial_tm1.suspectCount.values[0]
-                        if provincial_tm1 is not None and len(provincial_tm1.suspectCount) else -1
+                        report.suspectedCount - imported_case_today.suspectCount - provincial_report_tm1.suspectCount.values[0]
+                        if provincial_report_tm1 is not None and len(provincial_report_tm1.suspectCount) else -1
                     ),
                     highDangerZoneCount=report.highDangerCount,
                     midDangerZoneCount=report.midDangerCount,
@@ -280,10 +345,8 @@ class DXYCovidReportSpiderService(BaseSpiderService):
                                 '$lte': (parser.parse(recordDate) + timedelta(1)).strftime("%Y-%m-%d"),
                             }}, {'$set': updated_provincial_report.dict()}, upsert=True))
                 else:
-                    # self._logger.info(
-                    #     f"save new provincial report: {provincial_report}")
-                    await provincial_report.save()
-                
+                    provincial_reports.append(provincial_report)
+                    
                 # city data
                 city_reports = []
                 for city_data in report.cities:
@@ -396,6 +459,8 @@ class DXYCovidReportSpiderService(BaseSpiderService):
                 
                 if len(city_reports) > 0:
                     await self._result_db_model.insert_many(city_reports)
+                    
+                await self._result_db_model.insert_many(provincial_reports)
             
             if should_update_report:
                 self._logger.info("Start executing bulk update operations")
@@ -412,8 +477,7 @@ class DXYCovidReportSpiderService(BaseSpiderService):
                     await asyncio.gather(*[
                         self._result_db_model.bulk_write(provincial_report_write_requests),
                         self._result_db_model.bulk_write(city_reports_write_requests),
-                        self._result_db_model.bulk_write(
-                            imported_case_write_requests)
+                        self._result_db_model.bulk_write(imported_case_write_requests)
                     ])
                     
                 except Exception as e:

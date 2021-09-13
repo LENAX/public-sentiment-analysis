@@ -81,6 +81,7 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
             try:
                 # Print some info about the responses
                 response_data = await response.json()
+                self._logger.info(f"response_data: {response_data}")
                 self._xhr_response[response.url] = {
                     "url": response.url,
                     "status": response.status,
@@ -109,11 +110,14 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
     
     
     async def _visit_homepage(self, url) -> bool:
+        self._logger.info("Start fetching homepage ...")
         self._xhr_response = {}
         await self._request_client.launch_browser()
         page = await self._request_client._browser.newPage()
         page.on('response', lambda req: asyncio.ensure_future(self._make_xhr_interceptor(req)))
         await page.goto(url, {'timeout': 1000000*20})
+        
+        self._logger.info("Fetch completed.")
 
         # wait until xhr responses are intercepted
         attempt = 0
@@ -240,12 +244,13 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
         
     def _fill_weather_now(self, weather_report, location_id):            
         weather_data = {**self.city_weather_reports[location_id].dict(),
-                        **weather_report['now']}
+                        **weather_report['now'], 'lastUpdate': weather_report['lastUpdate']}
         
         self.city_weather_reports[location_id] = self._result_data_model.parse_obj(weather_data)
 
 
     async def crawl(self, urls: List[str], rules: ScrapeRules):
+        self._logger.info("Start crawling...")
         await self._crawl_new_data(urls)
 
 
@@ -267,6 +272,8 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
                 return
             
             self._get_today_forecasts(weather_data)
+            
+            self._logger.info('Start fetching data from api...')
                 
             weather_report_urls = [
                 f"https://weather.cma.cn/api/now/{locationId}"
@@ -277,6 +284,8 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
                 1000,
                 [self._request_report_api(url, i)
                  for i, url in enumerate(weather_report_urls)])
+            
+            self._logger.info('Fetch succeed!')
             
             # update city's current weather
             for data in self.resp_data:
@@ -297,7 +306,8 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
                 
                 location_id = city_location['id']
                 self._fill_weather_now(weather_report, location_id)
- 
+
+            self._logger.info(f'Fetched {len(self.city_weather_reports)} reports')
                 
             await self._result_db_model.insert_many(
                 [self._result_db_model.parse_obj(report)

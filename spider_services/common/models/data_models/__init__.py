@@ -18,6 +18,7 @@ from .specification_model import SpecificationData
 from .job_status_model import JobStatus
 from .dxy_covid_report_model import DXYCOVIDReportData
 from .phes_covid_report_model import COVIDReportData as PHESCOVIDReportData
+from .phes_covid_report_model import DangerArea
 from .weather_report import (
     WeatherReport, HourlyForecast, TodayForecast, DailyForecast,
     WeeklyWeatherForecast, WeatherNow, Location, WeatherAlert)

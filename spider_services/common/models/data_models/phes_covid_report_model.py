@@ -5,6 +5,12 @@ from datetime import datetime
 # from ..db_models import PHESCOVIDReport as COVIDReportDBModel
 from devtools import debug
 
+
+class DangerArea(BaseModel):
+    areaName: str
+    cityName: str
+    dangerLevel: int
+
 class COVIDReportData(BaseModel):
     """ Defines a weather record
     
@@ -52,6 +58,7 @@ class COVIDReportData(BaseModel):
     foreignNowDeathIncrease: Optional[float]
     suspectCount: Optional[float]
     suspectIncrease: Optional[float]
+    dangerAreas: Optional[List[DangerArea]]
     highDangerZoneCount: Optional[float]
     midDangerZoneCount: Optional[float]
     isImportedCase: Optional[bool]
