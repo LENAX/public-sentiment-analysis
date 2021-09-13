@@ -1,0 +1,86 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+
+        {
+            "name": "Main Server",
+            "type": "python",
+            "request": "launch",
+            "module": "spider.app.server"
+        },
+        {
+            "name": "Test main container",
+            "type": "python",
+            "request": "launch",
+            "module": "spider.app.containers.test_main"
+        },
+        {
+            "name": "Service Container",
+            "type": "python",
+            "request": "launch",
+            "module": "spider.app.containers.service_containers"
+        },
+        {
+            "name": "Job Model",
+            "type": "python",
+            "request": "launch",
+            "module": "spider.app.models.db_models.job_model",
+            "justMyCode": false
+        },
+        {
+            "name": "Scheduler demo",
+            "type": "python",
+            "request": "launch",
+            "module": "spider.app.apscheduler_demo.scheduler",
+            "justMyCode": false
+        },
+        {
+            "name": "Job Service",
+            "type": "python",
+            "request": "launch",
+            "module": "spider.app.service.job_services",
+            "justMyCode": false
+        },
+        {
+            "name": "Spider Service",
+            "type": "python",
+            "request": "launch",
+            "module": "spider.app.service.spider_services",
+            "justMyCode": false
+        },
+        {
+            "name": "Parser",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.common.core.parser"
+        },
+        {
+            "name": "Weather Report Spider",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.weather_forecast_spider.app.service"
+        },
+        {
+            "name": "CMA Weather Report Spider",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.cma_weather_report_spider.app.service"
+        },
+        {
+            "name": "AQI Spider",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.aqi_spider.app.service"
+        },
+        {
+            "name": "CMA Weather Data Service",
+            "type": "python",
+            "request": "launch",
+            "module": "data_services.weather.app.service"
+        },
+    ]
+}
