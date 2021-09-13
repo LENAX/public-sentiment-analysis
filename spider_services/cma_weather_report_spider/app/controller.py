@@ -36,6 +36,7 @@ async def get_aqi_report(args: CMAWeatherSpiderArgs,
     try:
         logger.info(f"Start crawling weather report in background...")
         background_tasks.add_task(spider_service.crawl, [args.url], None)
+        # await spider_service.crawl([args.url], None)
         return Response(message="Task created successfully.", statusCode=200, status="success")
     except Exception as e:
         traceback.print_exc()

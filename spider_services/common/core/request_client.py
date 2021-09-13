@@ -60,7 +60,7 @@ class AsyncBrowserRequestClient(BaseRequestClient):
     async def __init__(self,
                  browser_launcher: Callable = launch,
                  browser_path: str = None,
-                 headless: bool = False,
+                 headless: bool = True,
                  headers: dict = {},
                  cookies: List[dict] = []):
         self._browser_launcher = browser_launcher
@@ -132,10 +132,10 @@ class AsyncBrowserRequestClient(BaseRequestClient):
         finally:
             await page.close()
 
-    async def launch_browser(self):
+    async def launch_browser(self, headless=True):
         self._browser = await self._browser_launcher(
             browser_path=self._browser_path,
-            headless=True,
+            headless=headless,
             args=['--no-sandbox'])
 
     async def close(self):

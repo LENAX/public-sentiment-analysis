@@ -1,6 +1,7 @@
 import re
 import json
 import asyncio
+import aiohttp
 from typing import Any
 from functools import partial
 from datetime import datetime
@@ -20,6 +21,7 @@ import traceback
 import logging
 from logging import Logger, getLogger
 from dateutil import parser
+from devtools import debug
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%dT%H:%M:%S%z")
@@ -81,7 +83,6 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
             try:
                 # Print some info about the responses
                 response_data = await response.json()
-                self._logger.info(f"response_data: {response_data}")
                 self._xhr_response[response.url] = {
                     "url": response.url,
                     "status": response.status,
@@ -278,15 +279,13 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
             weather_report_urls = [
                 f"https://weather.cma.cn/api/now/{locationId}"
                 for locationId in self.city_weather_reports]
-         
             self.resp_data: List[dict] = []
             await self._throttled_fetch(
-                1000,
+                100,
                 [self._request_report_api(url, i)
                  for i, url in enumerate(weather_report_urls)])
             
             self._logger.info('Fetch succeed!')
-            
             # update city's current weather
             for data in self.resp_data:
                 if not self._is_valid_response_data(data):
@@ -308,10 +307,11 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
                 self._fill_weather_now(weather_report, location_id)
 
             self._logger.info(f'Fetched {len(self.city_weather_reports)} reports')
-                
-            await self._result_db_model.insert_many(
-                [self._result_db_model.parse_obj(report)
-                 for report in self.city_weather_reports.values()])
+            
+            data_to_insert = [self._result_db_model.parse_obj(report)
+                 for report in self.city_weather_reports.values()]
+            
+            await self._result_db_model.insert_many(data_to_insert)
             self._logger.info('Done!')
                 
         except Exception as e:
