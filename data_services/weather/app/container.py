@@ -58,5 +58,4 @@ class Application(containers.DeclarativeContainer):
 
     services = providers.Container(
         ServiceContainer,
-        resource=resources,
         config=config)

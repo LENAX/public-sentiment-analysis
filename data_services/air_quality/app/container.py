@@ -1,16 +1,12 @@
 """ Application level dependency container
 """
 
-from .models.db_models import SubscriptionDBModel
-from .models.data_models import Subscription as SubscriptionData
+from .models.db_models import AirQualityDBModel
+from .models.data_models import AirQuality
 
-from dependency_injector.wiring import inject, Provide
 from dependency_injector import containers, providers
 from .db import create_client
-from .services import (
-    HappyPAICNotificationService,
-    SubscriptionService
-)
+from .services import AQIReportService
 
 
 def make_db_client(db_config):
@@ -22,6 +18,7 @@ def make_db_client(db_config):
         db_name=db_config['db_name'])
     yield client
     client.close()
+
 
 class ResourceContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
@@ -36,13 +33,10 @@ class ResourceContainer(containers.DeclarativeContainer):
 class ServiceContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
 
-    happy_paic_notification_service = providers.Singleton(
-        HappyPAICNotificationService,
-        happy_paic_server_url=config.rpc.happy_paic_server_url)
-    subscription_service = providers.Singleton(
-        SubscriptionService,
-        subscription_data_model=SubscriptionData,
-        subscription_db_model=SubscriptionDBModel)
+    aqi_report_service = providers.Singleton(
+        AQIReportService,
+        data_model=AirQuality,
+        db_model=AirQualityDBModel)
 
 
 class Application(containers.DeclarativeContainer):

@@ -1,2 +1,1 @@
-from .subscription import Subscription
-from .notification import Notification
+from .air_quality import AirQuality

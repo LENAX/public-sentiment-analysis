@@ -133,14 +133,22 @@ class MongoModel(BaseModel):
             traceback.print_exc()
             print(e)
 
+    @classmethod
+    async def aggregate(cls, pipeline: List[dict]) -> List["MongoModel"]:
+        try:
+            cursor = cls.db[cls.__collection__].aggregate(pipeline)
+            agg_results = [cls.from_mongo(result) async for result in cursor]
+            return agg_results
+        except Exception as e:
+            traceback.print_exc()
+            raise e
 
     @classmethod
     async def get(cls, query: dict,
                   limit: Optional[int] = 0,
                   skip: Optional[int] = 0) -> List["MongoModel"]:
         try:
-            collection = cls.db[cls.__collection__]
-            query_result = collection.find(query, limit=limit, skip=skip)
+            query_result = cls.db[cls.__collection__].find(query, limit, skip)
             result = [cls.from_mongo(data) async for data in query_result]
             return result
         except AttributeError as e:
@@ -189,6 +197,8 @@ class MongoModel(BaseModel):
         except AttributeError as e:
             print("You must set db instance before getting any data")
             raise e
+        
+    
 
     @classmethod
     async def update_one(cls, filter: dict, update: dict) -> None:

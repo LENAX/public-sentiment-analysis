@@ -4,7 +4,7 @@ import string
 import time
 from fastapi import FastAPI, Request
 from .models.db_models import bind_db_to_all_models
-from .controllers import notification, subscription
+from .controllers import aqi_controller
 from .config import config
 from .container import Application
 
@@ -19,15 +19,14 @@ server_logger.setLevel(logging.DEBUG)
 def create_app() -> FastAPI:
     container = Application()
     container.config.from_dict(config)
-    container.wire(modules=[notification, subscription])
+    container.wire(modules=[aqi_controller])
 
     db_client = container.resources.db_client()
     bind_db_to_all_models(db_client, config['db']['db_name'])
 
     app = FastAPI()
     app.container = container
-    app.include_router(notification.notification_controller)
-    app.include_router(subscription.subscription_controller)
+    app.include_router(aqi_controller.aqi_controller)
     return app
 
 
@@ -61,7 +60,7 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/")
 async def welcome():
-    return {"message": "I am a notification server!"}
+    return {"message": "Hi! I am aqi report data service."}
 
 
 if __name__ == "__main__":

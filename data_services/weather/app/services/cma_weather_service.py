@@ -45,7 +45,17 @@ class CMAWeatherReportService(BaseAsyncCRUDService):
     async def get_many(self, query: dict) -> List[CMADailyWeather]:
         try:
             # query should include province, city, start date and end date
-            cma_weather_reports = await self._db_model.get(query)
+            group_args = {key: {'$first': f"${key}"}
+                          for key in self._data_model.schema()['properties']}
+            pipeline = [
+                {"$sort": {"lastUpdate": -1}},
+                {"$match": query},
+                {"$group": {
+                    "_id": "$location.locationId",
+                    **group_args
+                }}
+            ]
+            cma_weather_reports = await self._db_model.aggregate(pipeline)
             if len(cma_weather_reports) == 0:
                 return []
             

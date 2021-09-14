@@ -133,6 +133,15 @@ class MongoModel(BaseModel):
             traceback.print_exc()
             print(e)
 
+    @classmethod
+    async def aggregate(cls, pipeline: List[dict]) -> List["MongoModel"]:
+        try:
+            cursor = cls.db[cls.__collection__].aggregate(pipeline)
+            agg_results = [cls.from_mongo(result) async for result in cursor]
+            return agg_results
+        except Exception as e:
+            traceback.print_exc()
+            raise e
 
     @classmethod
     async def get(cls, query: dict,
@@ -188,6 +197,8 @@ class MongoModel(BaseModel):
         except AttributeError as e:
             print("You must set db instance before getting any data")
             raise e
+        
+    
 
     @classmethod
     async def update_one(cls, filter: dict, update: dict) -> None:
