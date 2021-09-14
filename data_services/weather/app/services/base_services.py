@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
-from ..models.data_models import DataModel
 from typing import List, Any, Callable
 from pydantic import BaseModel
-from ..models.request_models import QueryArgs
 
 class BaseSpiderService(ABC):
     """ Defines common interface for spider services.

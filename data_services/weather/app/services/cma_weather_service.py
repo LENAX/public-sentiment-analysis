@@ -16,7 +16,7 @@ logger.setLevel(logging.DEBUG)
 
 
 class CMAWeatherReportService(BaseAsyncCRUDService):
-    """ Provides Weather AQI Data Access
+    """ Provides CMA Daily Weather Data Access
     """
 
     def __init__(self,
@@ -30,9 +30,10 @@ class CMAWeatherReportService(BaseAsyncCRUDService):
         self._logger = logger
         
     def _to_dataframe(self, cma_weather_data):
-        cma_weather_data = [self._data_model.parse_obj(report) for report in cma_weather_reports]
+        cma_weather_reports = [self._data_model.parse_obj(
+            report) for report in cma_weather_data]
         weather_data = []
-        for report in cma_weather_data:
+        for report in cma_weather_reports:
             weather = report.dict()
             weather['province'] = report.location.province
             weather['city'] = report.location.city
@@ -44,7 +45,7 @@ class CMAWeatherReportService(BaseAsyncCRUDService):
     async def get_many(self, query: dict) -> List[CMADailyWeather]:
         try:
             # query should include province, city, start date and end date
-            cma_weather_reports = await self._db_model.get_many(query)
+            cma_weather_reports = await self._db_model.get(query)
             if len(cma_weather_reports) == 0:
                 return []
             
@@ -57,8 +58,8 @@ class CMAWeatherReportService(BaseAsyncCRUDService):
             for row in weather_mean.iterrows():
                 province, city, areaCode = row[0]
                 mean_weather_series = row[1]
-                min_weather_series = weather_min[province, city, :]
-                max_weather_series = weather_max[province, city, :]
+                min_weather_series = weather_min.loc[(province, city, areaCode), :]
+                max_weather_series = weather_max.loc[(province, city, areaCode), :]
                 
                 weather_stats = self._output_model(
                     avgAirPressure=mean_weather_series['pressure'],
@@ -109,16 +110,29 @@ class CMAWeatherReportService(BaseAsyncCRUDService):
 
 
 if __name__ == "__main__":
+    import asyncio
     from devtools import debug
+    from ..db import create_client
     
-    cma_weather_report_service = CMAWeatherReportService(
-        cma_daily_weather_data_model=CMADailyWeather,
-        cma_weather_report_data_model=CMAWeatherReport,
-        cma_weather_report_db_model=CMAWeatherReportDBModel
-    )
-    
-    weather_reports = cma_weather_report_service.get_many({
-        'province': '湖北', 'create_dt': {"$gte": '2021-09-13'}
-    })
+    async def main():
+        db_client = create_client(host='localhost',
+                                username='admin',
+                                password='root',
+                                port=27017,
+                                db_name='test')
+        CMAWeatherReportDBModel.db = db_client['test']
+        cma_weather_report_service = CMAWeatherReportService(
+            cma_daily_weather_data_model=CMADailyWeather,
+            cma_weather_report_data_model=CMAWeatherReport,
+            cma_weather_report_db_model=CMAWeatherReportDBModel
+        )
+        
+        # results = await CMAWeatherReportDBModel.get({'location.province': '广东'})
+        # debug(results)
+        weather_reports = await cma_weather_report_service.get_many({
+            'location.province': '湖北', 'create_dt': {"$gte": '2021-09-14'}})
 
-    debug(weather_reports)
+        debug(weather_reports)
+        
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())

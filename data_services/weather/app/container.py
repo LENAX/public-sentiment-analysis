@@ -1,16 +1,13 @@
 """ Application level dependency container
 """
 
-from .models.db_models import SubscriptionDBModel
-from .models.data_models import Subscription as SubscriptionData
+from .models.db_models import CMAWeatherReportDBModel
+from .models.data_models import CMADailyWeather, CMAWeatherReport
 
 from dependency_injector.wiring import inject, Provide
 from dependency_injector import containers, providers
 from .db import create_client
-from .services import (
-    HappyPAICNotificationService,
-    SubscriptionService
-)
+from .services import CMAWeatherReportService
 
 
 def make_db_client(db_config):
@@ -36,13 +33,11 @@ class ResourceContainer(containers.DeclarativeContainer):
 class ServiceContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
 
-    happy_paic_notification_service = providers.Singleton(
-        HappyPAICNotificationService,
-        happy_paic_server_url=config.rpc.happy_paic_server_url)
-    subscription_service = providers.Singleton(
-        SubscriptionService,
-        subscription_data_model=SubscriptionData,
-        subscription_db_model=SubscriptionDBModel)
+    cma_weather_report_service = providers.Singleton(
+        CMAWeatherReportService,
+        cma_daily_weather_data_model=CMADailyWeather,
+        cma_weather_report_data_model=CMAWeatherReport,
+        cma_weather_report_db_model=CMAWeatherReportDBModel)
 
 
 class Application(containers.DeclarativeContainer):
@@ -63,4 +58,5 @@ class Application(containers.DeclarativeContainer):
 
     services = providers.Container(
         ServiceContainer,
+        resource=resources,
         config=config)

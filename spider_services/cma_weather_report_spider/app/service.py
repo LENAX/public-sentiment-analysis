@@ -116,7 +116,11 @@ class CMAWeatherReportSpiderService(BaseSpiderService):
         await self._request_client.launch_browser()
         page = await self._request_client._browser.newPage()
         page.on('response', lambda req: asyncio.ensure_future(self._make_xhr_interceptor(req)))
-        await page.goto(url, {'timeout': 1000000*20})
+        try:
+            await page.goto(url, {'timeout': 60000})
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(f"{e}")
         
         self._logger.info("Fetch completed.")
 

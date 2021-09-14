@@ -80,7 +80,7 @@
             "name": "CMA Weather Data Service",
             "type": "python",
             "request": "launch",
-            "module": "data_services.weather.app.service"
+            "module": "data_services.weather.app.services.cma_weather_service"
         },
     ]
 }
