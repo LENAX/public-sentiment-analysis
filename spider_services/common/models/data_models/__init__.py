@@ -23,3 +23,6 @@ from .weather_report import (
     WeatherReport, HourlyForecast, TodayForecast, DailyForecast,
     WeeklyWeatherForecast, WeatherNow, Location, WeatherAlert)
 from .cma_weather_report import CMAWeatherReport
+from .migration_index import MigrationIndex
+from .migration_rank import MigrationRank
+

@@ -9,7 +9,8 @@ from .news import News
 from .weather import Weather
 from .weather_report import WeatherReportDBModel
 from .cma_weather_report import CMAWeatherReportDBModel
-
+from .migration_index import MigrationIndexDBModel
+from .migration_rank import MigrationRankDBModel
 
 
 def bind_db_to_all_models(db_client, db_name: str) -> None:
@@ -25,3 +26,5 @@ def bind_db_to_all_models(db_client, db_name: str) -> None:
     Weather.db = db
     WeatherReportDBModel.db = db
     CMAWeatherReportDBModel.db = db
+    MigrationRankDBModel.db = db
+    MigrationIndexDBModel.db = db

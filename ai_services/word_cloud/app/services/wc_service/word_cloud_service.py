@@ -35,6 +35,7 @@ class WordCloudGenerationService(BaseAsyncWordCloudService):
         except Exception as e:
             self._exception_handler()
             self._logger.error(e)
+            return self._data_model(content=[])
 
 
 if __name__ == "__main__":

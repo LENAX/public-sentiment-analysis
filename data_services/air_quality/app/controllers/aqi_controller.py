@@ -44,4 +44,4 @@ async def get_aqi_report(province: str = '湖北', city: Optional[str] = None,
     except Exception as e:
         traceback.print_exc()
         logger.error(f"{e}")
-        return Response(message=f"{e}", statusCode=500, status="failed"), 500
+        return Response(message=f"{e}", statusCode=500, status="failed")
