@@ -1,5 +1,5 @@
 import re
-import json
+import ujson
 import asyncio
 import aiohttp
 from typing import Any
@@ -48,11 +48,88 @@ class MigrationIndexSpiderService(BaseSpiderService):
         self._result_data_model = result_data_model
         self._throttled_fetch = throttled_fetch
         self._logger = logger
-    
-    
 
+    def _get_migration_index_urls(self, base_url: str, area_codes: List[str],
+                                  migration_type: str, date: datetime = datetime.now()):
+        return [f"{base_url}?dt=province&id={area_code}&type={migration_type}&date={date.strftime('%Y%m%d')}"
+                for area_code in area_codes]
+        
+    def _parse_jsonp(self, jsonp_str: str) -> dict:
+        try:
+            if len(jsonp_str) == 0:
+                self._logger.error("Expected jsonp string to be a non-empty string!")
+                return {}
+            
+            json_data = ujson.loads(jsonp_str[4:-1])
+            return json_data
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
+            return {}
+            
+    def _is_valid_response_data(self, response: dict):
+        return all([
+            'errno' in response and response['errno'] == 0,
+            ('data' in response and 'list' in response['data'] and 
+             type(response['data']['list']) is list and
+             len(response['data']['list']) > 0)
+        ])
+            
+    def _to_migration_index(self, data: dict, areaCode: str, migration_type: str) -> List[MigrationIndex]:
+        """ Convert json to list of migration index data
+
+        Args:
+            data (dict): response from json, must contain field data and data.list
+            areaCode (str): area code of the migration data
+            migration_type (str): is either 'move_in' or 'move_out'
+        Returns:
+            List[MigrationIndex]: converted data
+        """
+        try:
+            if not self._is_valid_response_data(data):
+                self._logger.error(f'Invalid response data: {data}')
+                return []
+            
+            migration_indexes = []
+            
+            for migration_data in data['data']['list']:
+                if type(migration_data) is not dict or len(migration_data) == 0:
+                    self._logger.error(f'Invalid migration data: {migration_data}, skipped...')
+                    continue
+                date, migration_index_value = list(migration_data.items())[0]
+                migration_indexes.append(
+                    self._data_model(
+                        areaCode=areaCode,
+                        date=date,
+                        migration_type=migration_type,
+                        migration_index=migration_index_value))
+            
+            return migration_indexes
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
+            return []
+        
     async def crawl(self, urls: List[str], rules: ScrapeRules):
-        self._logger.info("Start crawling...")
+        try:
+            if len(urls) == 0 or rules is None:
+                self._logger.error("No url or rules are specified.")
+                return
+            
+            self._logger.info("Start crawling...")
+            base_url = urls[0]
+            areaCodes = rules.keywords.include
+            move_in_data_urls = self._get_migration_index_urls(base_url, areaCodes, 'move_in')
+            move_out_data_urls = self._get_migration_index_urls(base_url, areaCodes, 'move_out')
+            # target_urls = move_in_data_urls + move_out_data_urls
+            spiders = self._spider_class.create_from_urls(
+                move_in_data_urls, self._request_client, rules.max_retry)
+            migration_api_responses = await self._throttled_fetch(rules.max_concurrency, [spider.fetch() for spider in spiders])
+            
+            
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
         
 
 
