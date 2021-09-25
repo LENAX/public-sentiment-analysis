@@ -342,7 +342,7 @@ if __name__ == "__main__":
         )
     )
     
-    # save_config(config, './spider_services/service_configs/cma_weather.yml')
+    # save_config(config, './spider_services/migration_index_spider/app/service_configs/migration_index_config.yml')
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(test_spider_services(
