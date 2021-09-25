@@ -2,7 +2,7 @@ import re
 import ujson
 import asyncio
 import aiohttp
-from typing import Any
+from typing import Any, Tuple
 from functools import partial
 from datetime import datetime
 from pymongo import InsertOne, DeleteMany, ReplaceOne, UpdateOne
@@ -15,7 +15,7 @@ from ....common.models.data_models import Location, MigrationIndex
 from ....common.models.request_models import ScrapeRules, ParseRule
 from ....common.models.db_models import MigrationIndexDBModel
 from ....common.core import (
-    BaseSpider, ParserContextFactory, AsyncBrowserRequestClient, CrawlerContextFactory)
+    BaseSpider, ParserContextFactory, AsyncBrowserRequestClient, RequestClient, CrawlerContextFactory)
 from ....common.utils import throttled
 import traceback
 import logging
@@ -52,7 +52,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
     def _get_migration_index_urls(self, base_url: str, area_codes: List[str],
                                   migration_type: str, date: datetime = datetime.now()):
         return [f"{base_url}?dt=province&id={area_code}&type={migration_type}&date={date.strftime('%Y%m%d')}"
-                for area_code in area_codes]
+                for area_code, _ in area_codes]
         
     def _parse_jsonp(self, jsonp_str: str) -> dict:
         try:
@@ -60,7 +60,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
                 self._logger.error("Expected jsonp string to be a non-empty string!")
                 return {}
             
-            json_data = ujson.loads(jsonp_str[4:-1])
+            json_data = ujson.loads(jsonp_str)
             return json_data
         except Exception as e:
             traceback.print_exc()
@@ -71,9 +71,8 @@ class MigrationIndexSpiderService(BaseSpiderService):
         return all([
             'errno' in response and response['errno'] == 0,
             ('data' in response and 'list' in response['data'] and 
-             type(response['data']['list']) is list and
-             len(response['data']['list']) > 0)
-        ])
+             type(response['data']['list']) is dict and
+             len(response['data']['list']) > 0)])
             
     def _to_migration_index(self, data: dict, areaCode: str, migration_type: str) -> List[MigrationIndex]:
         """ Convert json to list of migration index data
@@ -90,26 +89,85 @@ class MigrationIndexSpiderService(BaseSpiderService):
                 self._logger.error(f'Invalid response data: {data}')
                 return []
             
-            migration_indexes = []
-            
-            for migration_data in data['data']['list']:
-                if type(migration_data) is not dict or len(migration_data) == 0:
-                    self._logger.error(f'Invalid migration data: {migration_data}, skipped...')
-                    continue
-                date, migration_index_value = list(migration_data.items())[0]
-                migration_indexes.append(
-                    self._data_model(
-                        areaCode=areaCode,
-                        date=date,
-                        migration_type=migration_type,
-                        migration_index=migration_index_value))
-            
+            migration_indexes = [
+                self._result_data_model(
+                    areaCode=areaCode,
+                    date=date,
+                    migration_type=migration_type,
+                    migration_index=migration_index_value)
+                for date, migration_index_value in data['data']['list'].items()]
+
             return migration_indexes
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
             return []
         
+    def _url_to_area_code(self, url: str) -> str:
+        if type(url) is not str:
+            self._logger.error(f"Expected url {url} to be a string!")
+            return ""
+        
+        try:
+            query_arg_list = url.split("&")
+            
+            if len(query_arg_list) < 2:
+                self._logger.error(f"Expected url {url} to contain at least two query arguments!")
+                return ""
+            
+            areaCode_arg = [arg for arg in query_arg_list if arg.startswith('id=')]
+            
+            if len(areaCode_arg) != 1:
+                self._logger.error(f"Expected areaCode_arg {areaCode_arg} to have exactly one match!")
+                return ""
+            
+            return areaCode_arg[0][3:]
+            
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
+            return ""
+        
+    def _parse_migration_api_response(self, responses: List[Tuple[str, str]], migration_type: str) -> List[MigrationIndex]:
+        """Parse response data from migration index api and convert them to MigrationIndex objects. 
+
+        Args:
+            responses (List[Tuple[str, str]]): response string from migration index api
+            migration_type (str): is either 'move_in' or 'move_out'
+
+        Returns:
+            List[MigrationIndex]: list of MigrationIndex objects
+        """
+        try:
+            migration_data = []
+            
+            for response in responses:
+                url, resp_data = response
+                areaCode = self._url_to_area_code(url)
+                parsed_response = self._parse_jsonp(resp_data)
+                migration_indexes = self._to_migration_index(parsed_response, areaCode, migration_type)
+                migration_data.extend(migration_indexes)
+            
+            return migration_data
+        
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
+            return []
+        
+    async def _crawl_migration_indexes(self, base_url: str, area_codes: List[str], migration_type: str, max_retry: int, max_concurrency: int) -> List[MigrationIndex]:
+        try:
+            data_urls = self._get_migration_index_urls(base_url, area_codes, migration_type)
+            spiders = self._spider_class.create_from_urls(
+                data_urls, self._request_client, max_retry)
+            migration_api_responses = await self._throttled_fetch(max_concurrency, [spider.fetch() for spider in spiders])
+            migration_indexes = self._parse_migration_api_response(migration_api_responses, migration_type)
+            return migration_indexes
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
+            return []
+          
     async def crawl(self, urls: List[str], rules: ScrapeRules):
         try:
             if len(urls) == 0 or rules is None:
@@ -119,14 +177,15 @@ class MigrationIndexSpiderService(BaseSpiderService):
             self._logger.info("Start crawling...")
             base_url = urls[0]
             areaCodes = rules.keywords.include
-            move_in_data_urls = self._get_migration_index_urls(base_url, areaCodes, 'move_in')
-            move_out_data_urls = self._get_migration_index_urls(base_url, areaCodes, 'move_out')
-            # target_urls = move_in_data_urls + move_out_data_urls
-            spiders = self._spider_class.create_from_urls(
-                move_in_data_urls, self._request_client, rules.max_retry)
-            migration_api_responses = await self._throttled_fetch(rules.max_concurrency, [spider.fetch() for spider in spiders])
-            
-            
+            move_in_indexes, move_out_indexes = await self._throttled_fetch(
+                rules.max_concurrency, [
+                    self._crawl_migration_indexes(base_url, areaCodes, 'move_in', rules.max_retry, rules.max_concurrency),
+                    self._crawl_migration_indexes(base_url, areaCodes, 'move_out', rules.max_retry, rules.max_concurrency)
+                ])
+            migration_indexes = move_in_indexes + move_out_indexes
+            migration_indexes_db_objects = self._result_db_model.parse_many(migration_indexes)
+            await self._result_db_model.insert_many(migration_indexes_db_objects)
+            self._logger.info("Done!")
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
@@ -149,6 +208,7 @@ if __name__ == "__main__":
     from devtools import debug
     import aiohttp
     import cProfile
+    import ujson
 
     def create_client(host: str, username: str,
                       password: str, port: int,
@@ -173,6 +233,23 @@ if __name__ == "__main__":
         with open(path, 'w+') as f:
             config_text = dump(config, Dumper=dump_class)
             f.write(config_text)
+
+    def get_area_codes(data_path):
+        city_area_codes = []
+        
+        with open(data_path, 'r') as f:
+            area_code_data = ujson.loads(f.read())
+            
+        for area in area_code_data:
+            cities = area['children']
+            province_name = area['name']
+            
+            for city in cities:
+                # city_name = f"{province_name}{city['name']}"
+                code = city['code'] if len(city['code']) == 6 else f"{city['code']}00"
+                city_area_codes.append(code)
+        
+        return city_area_codes
 
     async def test_spider_services(db_client,
                                    db_name,
@@ -228,121 +305,16 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        "https://weather.cma.cn/"
+        "https://huiyan.baidu.com/migration/historycurve.json"
     ]
+    city_area_codes = get_area_codes(f"{getcwd()}/spider_services/migration_index_spider/app/service_configs/pc-code.json")
+    print(city_area_codes)
     config = ScrapeRules(
-        max_concurrency=1000,
+        max_concurrency=100,
         max_retry=10,
-        parsing_pipeline=[
-            ParsingPipeline(
-                name="update_time_parser",
-                parser='list_item_parser',
-                parse_rules=[
-                    ParseRule(
-                        field_name='lastUpdate',
-                        rule="/html/body/div[1]/div[2]/div[1]/div[1]/div[1]/text()",
-                        rule_type='xpath',
-                        slice_str=[7, 23]
-                    )
-                ]
-            ), ParsingPipeline(
-                name='daily_forecast_parser',
-                parser='list_item_parser',
-                parse_rules=[
-                    ParseRule(
-                        field_name='day',
-                        rule="//*[@id='dayList']/div/div[1]/text()[1]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='day',
-                        rule="//*[@id='dayList']/div[*]/div[1]/text()[1]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='date',
-                        rule="//*[@id='dayList']/div/div[1]/text()[2]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='morningWeather',
-                        rule="//*[@id='dayList']/div/div[3]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='morningWindDirection',
-                        rule="//*[@id='dayList']/div/div[4]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='morningWindScale',
-                        rule="//*[@id='dayList']/div/div[5]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='highestTemperature',
-                        rule="//*[@id='dayList']/div/div[6]/div/div[1]/text()",
-                        rule_type='xpath',
-                        slice_str=[0, -1]
-                    ), ParseRule(
-                        field_name='lowestTemperature',
-                        rule="//*[@id='dayList']/div/div[6]/div/div[2]/text()",
-                        rule_type='xpath',
-                        slice_str=[0, -1]
-                    ), ParseRule(
-                        field_name='eveningWeather',
-                        rule="//*[@id='dayList']/div/div[8]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='eveningWindDirection',
-                        rule="//*[@id='dayList']/div/div[9]",
-                        rule_type='xpath'
-                    ), ParseRule(
-                        field_name='eveningWindScale',
-                        rule="//*[@id='dayList']/div/div[10]",
-                        rule_type='xpath'
-                    ),
-            ]), ParsingPipeline(
-                name='hourly_forecast_parser',
-                parser='list_item_parser',
-                parse_rules=[ParseRule(
-                    field_name='time',
-                    rule="//tr[1]/td[position()>1]/text()",
-                    rule_type='xpath'
-                ), ParseRule(
-                    field_name='weather',
-                    rule="//tr[2]/td/img/@src",
-                    rule_type='xpath',
-                    slice_str=[-5, -4]
-                ), ParseRule(
-                    field_name='temperature',
-                    rule="//tr[3]/td[position() > 1]/text()",
-                    rule_type='xpath',
-                    slice_str=[0, -1]
-                ), ParseRule(
-                    field_name='precipitation',
-                    rule="//tr[4]/td[position() >1]/text()",
-                    rule_type='xpath'
-                ), ParseRule(
-                    field_name='windSpeed',
-                    rule="//tr[5]/td[position() >1]/text()",
-                    rule_type='xpath',
-                    slice_str=[0, -3]
-                ), ParseRule(
-                    field_name='windDirection',
-                    rule="//tr[6]/td[position() >1]/text()",
-                    rule_type='xpath'
-                ), ParseRule(
-                    field_name='pressure',
-                    rule="//tr[7]/td[position() >1]/text()",
-                    rule_type='xpath',
-                    slice_str=[0, -3]
-                ), ParseRule(
-                    field_name='humidity',
-                    rule="//tr[8]/td[position() >1]/text()",
-                    rule_type='xpath',
-                    slice_str=[0, -1]
-                ), ParseRule(
-                    field_name='cloud',
-                    rule="//tr[9]/td[position() >1]/text()",
-                    rule_type='xpath',
-                    slice_str=[0, -1]
-                )]
-        )]
+        keywords=KeywordRules(
+            include=city_area_codes
+        )
     )
     
     # save_config(config, './spider_services/service_configs/cma_weather.yml')
@@ -353,7 +325,7 @@ if __name__ == "__main__":
         db_name=use_db,
         headers=headers.dict(),
         cookies=cookies,
-        client_session_class=AsyncBrowserRequestClient,
+        client_session_class=RequestClient,
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
         crawling_strategy_factory=CrawlerContextFactory,

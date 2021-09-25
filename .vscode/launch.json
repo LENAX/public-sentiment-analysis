@@ -71,6 +71,18 @@
             "module": "spider_services.cma_weather_report_spider.app.service"
         },
         {
+            "name": "Migration Index Spider",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.migration_index_spider.app.service.migration_index_spider"
+        },
+        {
+            "name": "Migration Rank Spider",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.migration_index_spider.app.service.migration_rank_spider"
+        },
+        {
             "name": "AQI Spider",
             "type": "python",
             "request": "launch",

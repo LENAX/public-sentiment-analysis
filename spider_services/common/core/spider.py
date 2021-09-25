@@ -16,6 +16,10 @@ class BaseSpider(ABC):
     @abstractmethod
     def fetch(self, url: str, params: dict = {}):
         return NotImplemented
+    
+    @abstractmethod
+    def create_from_urls(cls, urls: List[str], request_client: BaseRequestClient, max_retry: int = 10):
+        pass
 
 
 class Spider(BaseSpider):
