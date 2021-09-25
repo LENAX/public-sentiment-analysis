@@ -4,7 +4,7 @@ import asyncio
 import aiohttp
 from typing import Any, Tuple
 from functools import partial
-from datetime import datetime
+from datetime import datetime, timedelta
 from pymongo import InsertOne, DeleteMany, ReplaceOne, UpdateOne
 from typing import List, Callable, Union
 from collections import namedtuple
@@ -52,7 +52,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
     def _get_migration_index_urls(self, base_url: str, area_codes: List[str],
                                   migration_type: str, date: datetime = datetime.now()):
         return [f"{base_url}?dt=province&id={area_code}&type={migration_type}&date={date.strftime('%Y%m%d')}"
-                for area_code, _ in area_codes]
+                for area_code in area_codes]
         
     def _parse_jsonp(self, jsonp_str: str) -> dict:
         try:
@@ -74,7 +74,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
              type(response['data']['list']) is dict and
              len(response['data']['list']) > 0)])
             
-    def _to_migration_index(self, data: dict, areaCode: str, migration_type: str) -> List[MigrationIndex]:
+    def _to_migration_index(self, data: dict, areaCode: str, migration_type: str, mode: str = 'update') -> List[MigrationIndex]:
         """ Convert json to list of migration index data
 
         Args:
@@ -89,13 +89,27 @@ class MigrationIndexSpiderService(BaseSpiderService):
                 self._logger.error(f'Invalid response data: {data}')
                 return []
             
-            migration_indexes = [
-                self._result_data_model(
-                    areaCode=areaCode,
-                    date=date,
-                    migration_type=migration_type,
-                    migration_index=migration_index_value)
-                for date, migration_index_value in data['data']['list'].items()]
+            migration_indexes = []
+            
+            if mode == 'update':
+                yesterday = (datetime.today() - timedelta(days=1)).strftime('%Y%m%d')
+                if yesterday in data['data']['list']:
+                    migration_indexes = [
+                        self._result_data_model(
+                            areaCode=areaCode,
+                            date=yesterday,
+                            migration_type=migration_type,
+                            migration_index=data['data']['list'][yesterday])]
+                else:
+                    self._logger.info(f"No available data, last date is {list(data['data']['list'].keys())[-1]}")
+            else:
+                migration_indexes = [
+                    self._result_data_model(
+                        areaCode=areaCode,
+                        date=date,
+                        migration_type=migration_type,
+                        migration_index=migration_index_value)
+                    for date, migration_index_value in data['data']['list'].items()]
 
             return migration_indexes
         except Exception as e:
@@ -128,7 +142,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
             self._logger.error(e)
             return ""
         
-    def _parse_migration_api_response(self, responses: List[Tuple[str, str]], migration_type: str) -> List[MigrationIndex]:
+    def _parse_migration_api_response(self, responses: List[Tuple[str, str]], migration_type: str, mode: str = 'update') -> List[MigrationIndex]:
         """Parse response data from migration index api and convert them to MigrationIndex objects. 
 
         Args:
@@ -145,7 +159,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
                 url, resp_data = response
                 areaCode = self._url_to_area_code(url)
                 parsed_response = self._parse_jsonp(resp_data)
-                migration_indexes = self._to_migration_index(parsed_response, areaCode, migration_type)
+                migration_indexes = self._to_migration_index(parsed_response, areaCode, migration_type, mode)
                 migration_data.extend(migration_indexes)
             
             return migration_data
@@ -155,18 +169,23 @@ class MigrationIndexSpiderService(BaseSpiderService):
             self._logger.error(e)
             return []
         
-    async def _crawl_migration_indexes(self, base_url: str, area_codes: List[str], migration_type: str, max_retry: int, max_concurrency: int) -> List[MigrationIndex]:
+    async def _crawl_migration_indexes(self, base_url: str, area_codes: List[str], migration_type: str, max_retry: int, max_concurrency: int, mode: str = 'update') -> List[MigrationIndex]:
         try:
             data_urls = self._get_migration_index_urls(base_url, area_codes, migration_type)
             spiders = self._spider_class.create_from_urls(
                 data_urls, self._request_client, max_retry)
             migration_api_responses = await self._throttled_fetch(max_concurrency, [spider.fetch() for spider in spiders])
-            migration_indexes = self._parse_migration_api_response(migration_api_responses, migration_type)
+            migration_indexes = self._parse_migration_api_response(migration_api_responses, migration_type, mode)
             return migration_indexes
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
             return []
+          
+    async def _batch_update(self, migration_indexes: List[MigrationIndexDBModel]):
+        batch_update_op = [UpdateOne({'date': index.date, 'areaCode': index.areaCode}, {'$set': index.mongo(update=True)}, upsert=True)
+                           for index in migration_indexes]
+        await self._result_db_model.bulk_write(batch_update_op)
           
     async def crawl(self, urls: List[str], rules: ScrapeRules):
         try:
@@ -179,12 +198,17 @@ class MigrationIndexSpiderService(BaseSpiderService):
             areaCodes = rules.keywords.include
             move_in_indexes, move_out_indexes = await self._throttled_fetch(
                 rules.max_concurrency, [
-                    self._crawl_migration_indexes(base_url, areaCodes, 'move_in', rules.max_retry, rules.max_concurrency),
-                    self._crawl_migration_indexes(base_url, areaCodes, 'move_out', rules.max_retry, rules.max_concurrency)
+                    self._crawl_migration_indexes(base_url, areaCodes, 'move_in', rules.max_retry, rules.max_concurrency, rules.mode),
+                    self._crawl_migration_indexes(base_url, areaCodes, 'move_out', rules.max_retry, rules.max_concurrency, rules.mode)
                 ])
             migration_indexes = move_in_indexes + move_out_indexes
             migration_indexes_db_objects = self._result_db_model.parse_many(migration_indexes)
-            await self._result_db_model.insert_many(migration_indexes_db_objects)
+            
+            if rules.mode == 'update':
+                await self._batch_update(migration_indexes_db_objects)
+            else:
+                await self._result_db_model.insert_many(migration_indexes_db_objects)
+            
             self._logger.info("Done!")
         except Exception as e:
             traceback.print_exc()
@@ -312,6 +336,7 @@ if __name__ == "__main__":
     config = ScrapeRules(
         max_concurrency=100,
         max_retry=10,
+        mode='update',
         keywords=KeywordRules(
             include=city_area_codes
         )

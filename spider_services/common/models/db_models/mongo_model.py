@@ -49,7 +49,7 @@ class MongoModel(BaseModel):
         setattr(parsed, "id", id)
         return parsed
 
-    def mongo(self, **kwargs):
+    def mongo(self, update: bool = False, **kwargs):
         exclude_unset = kwargs.pop('exclude_unset', True)
         by_alias = kwargs.pop('by_alias', True)
 
@@ -64,8 +64,10 @@ class MongoModel(BaseModel):
         parsed.pop("__db__", None)
 
         # Mongo uses `_id` as default key. We should stick to that as well.
-        if '_id' not in parsed and 'id' in parsed:
+        if not update and '_id' not in parsed and 'id' in parsed:
             parsed['_id'] = parsed.pop('id')
+        else:
+            parsed.pop('id')
 
         return parsed
 
