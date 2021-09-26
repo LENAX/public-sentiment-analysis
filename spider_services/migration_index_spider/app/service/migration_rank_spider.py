@@ -15,13 +15,14 @@ from ....common.models.data_models import MigrationRank
 from ....common.models.request_models import ScrapeRules, ParseRule
 from ....common.models.db_models import MigrationRankDBModel
 from ....common.core import (
-    BaseSpider, ParserContextFactory, AsyncBrowserRequestClient, RequestClient, CrawlerContextFactory)
+    BaseSpider, ParserContextFactory, BaseRequestClient, RequestClient, CrawlerContextFactory)
 from ....common.utils import throttled
 import traceback
 import logging
 from logging import Logger, getLogger
 from dateutil import parser
 from devtools import debug
+from pandas import date_range
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%dT%H:%M:%S%z")
@@ -35,10 +36,11 @@ class MigrationRankSpiderService(BaseSpiderService):
     """
 
     def __init__(self,
-                 request_client: AsyncBrowserRequestClient,
+                 request_client: BaseRequestClient,
                  spider_class: BaseSpider,
                  result_db_model: MigrationRankDBModel,
                  result_data_model: MigrationRank,
+                 area_code_dict: dict,
                  throttled_fetch: Callable = throttled,
                  logger: Logger = spider_service_logger,
                  **kwargs) -> None:
@@ -46,13 +48,17 @@ class MigrationRankSpiderService(BaseSpiderService):
         self._spider_class = spider_class
         self._result_db_model = result_db_model
         self._result_data_model = result_data_model
+        self._area_code_dict = area_code_dict
         self._throttled_fetch = throttled_fetch
         self._logger = logger
 
     def _get_migration_rank_urls(self, base_url: str, area_codes: List[str],
-                                  migration_type: str, date: datetime = datetime.now()):
-        return [f"{base_url}?dt=province&id={area_code}&type={migration_type}&date={date.strftime('%Y%m%d')}"
-                for area_code in area_codes]
+                                  migration_type: str, dates: List[datetime]) -> List[str]:
+        api_urls = []
+        for date in dates:
+            api_urls.extend([f"{base_url}?dt=province&id={area_code}&type={migration_type}&date={date.strftime('%Y%m%d')}"
+                             for area_code in area_codes])
+        return api_urls
         
     def _parse_jsonp(self, jsonp_str: str) -> dict:
         try:
@@ -60,7 +66,7 @@ class MigrationRankSpiderService(BaseSpiderService):
                 self._logger.error("Expected jsonp string to be a non-empty string!")
                 return {}
             
-            json_data = ujson.loads(jsonp_str)
+            json_data = ujson.loads(jsonp_str.strip()[3:-1])
             return json_data
         except Exception as e:
             traceback.print_exc()
@@ -68,11 +74,10 @@ class MigrationRankSpiderService(BaseSpiderService):
             return {}
             
     def _is_valid_response_data(self, response: dict):
-        return all([
-            'errno' in response and response['errno'] == 0,
-            ('data' in response and 'list' in response['data'] and 
-             type(response['data']['list']) is dict and
-             len(response['data']['list']) > 0)])
+        return all(['errno' in response and response['errno'] == 0,
+                   ('data' in response and 'list' in response['data'] and 
+                    type(response['data']['list']) is list and
+                    len(response['data']['list']) > 0)])
             
     def _to_migration_rank(self, data: dict, date: str, province: str, areaCode: str, migration_type: str, mode: str = 'update') -> List[MigrationRank]:
         """ Convert json to list of migration index data
@@ -92,13 +97,13 @@ class MigrationRankSpiderService(BaseSpiderService):
             migration_ranks = [
                 self._result_data_model(
                     date=date,
-                    to_province=province_name if migration_type == 'move_out' else province,
-                    # to_province_areaCode=yesterday,
-                    from_province=province if migration_type == 'move_in' else province_name,
-                    # from_province_areaCode=,
+                    to_province=migration_rank['province_name'] if migration_type == 'move_out' else province,
+                    to_province_areaCode=self._area_code_dict[migration_rank['province_name']] if migration_type == 'move_in' else areaCode,
+                    from_province=migration_rank['province_name'] if migration_type == 'move_in' else province,
+                    from_province_areaCode=areaCode if migration_type == 'move_in' else self._area_code_dict[migration_rank['province_name']],
                     direction=migration_type,
-                    value=value)
-                for province_name, value in data['data']['list'].items()]
+                    value=migration_rank['value'])
+                for migration_rank in data['data']['list']]
             
             return migration_ranks
         except Exception as e:
@@ -148,7 +153,9 @@ class MigrationRankSpiderService(BaseSpiderService):
                 url, resp_data = response
                 areaCode = self._url_to_area_code(url)
                 parsed_response = self._parse_jsonp(resp_data)
-                migration_ranks = self._to_migration_rank(parsed_response, areaCode, migration_type, mode)
+                province = self._area_code_dict[areaCode]
+                date = url.split("&")[-1].split("=")[-1]
+                migration_ranks = self._to_migration_rank(parsed_response, date, province, areaCode, migration_type, mode)
                 migration_data.extend(migration_ranks)
             
             return migration_data
@@ -158,9 +165,10 @@ class MigrationRankSpiderService(BaseSpiderService):
             self._logger.error(e)
             return []
         
-    async def _crawl_migration_ranks(self, base_url: str, area_codes: List[str], migration_type: str, max_retry: int, max_concurrency: int, mode: str = 'update') -> List[MigrationRank]:
+    async def _crawl_migration_ranks(self, base_url: str, area_codes: List[str], migration_type: str, 
+                                     dates: List[datetime], max_retry: int, max_concurrency: int, mode: str = 'update') -> List[MigrationRank]:
         try:
-            data_urls = self._get_migration_rank_urls(base_url, area_codes, migration_type)
+            data_urls = self._get_migration_rank_urls(base_url, area_codes, migration_type, dates)
             spiders = self._spider_class.create_from_urls(
                 data_urls, self._request_client, max_retry)
             migration_api_responses = await self._throttled_fetch(max_concurrency, [spider.fetch() for spider in spiders])
@@ -178,17 +186,21 @@ class MigrationRankSpiderService(BaseSpiderService):
           
     async def crawl(self, urls: List[str], rules: ScrapeRules):
         try:
-            if len(urls) == 0 or rules is None:
+            if (len(urls) == 0 or rules is None or not rules.keywords.include or rules.time_range is None or
+                rules.time_range.start_date is None or rules.time_range.end_date is None):
                 self._logger.error("No url or rules are specified.")
                 return
             
             self._logger.info("Start crawling...")
             base_url = urls[0]
             areaCodes = rules.keywords.include
+            start_date, end_date = rules.time_range.start_date, rules.time_range.end_date
+            crawling_date_range = date_range(start_date, end_date)
+            
             move_in_indexes, move_out_indexes = await self._throttled_fetch(
                 rules.max_concurrency, [
-                    self._crawl_migration_ranks(base_url, areaCodes, 'move_in', rules.max_retry, rules.max_concurrency, rules.mode),
-                    self._crawl_migration_ranks(base_url, areaCodes, 'move_out', rules.max_retry, rules.max_concurrency, rules.mode)
+                    self._crawl_migration_ranks(base_url, areaCodes, 'move_in', crawling_date_range, rules.max_retry, rules.max_concurrency, rules.mode),
+                    self._crawl_migration_ranks(base_url, areaCodes, 'move_out', crawling_date_range, rules.max_retry, rules.max_concurrency, rules.mode)
                 ])
             migration_ranks = move_in_indexes + move_out_indexes
             migration_ranks_db_objects = self._result_db_model.parse_many(migration_ranks)
@@ -218,6 +230,7 @@ if __name__ == "__main__":
     from yaml import load, dump
     from yaml import CLoader as Loader, CDumper as Dumper
     from os import getcwd
+    from dateutil import parser
     from devtools import debug
     import aiohttp
     import cProfile
@@ -248,21 +261,34 @@ if __name__ == "__main__":
             f.write(config_text)
 
     def get_area_codes(data_path):
-        city_area_codes = []
+        
         
         with open(data_path, 'r') as f:
             area_code_data = ujson.loads(f.read())
-            
+        
+        city_area_codes = [f"{area['code']}0000" for area in area_code_data]
+        return city_area_codes
+    
+    def get_area_code_dict(data_path):
+        area_code_dict = {}
+
+        with open(data_path, 'r') as f:
+            area_code_data = ujson.loads(f.read())
+
         for area in area_code_data:
             cities = area['children']
             province_name = area['name']
-            
+            area_code_dict[province_name] = f"{area['code']}0000"
+            area_code_dict[f"{area['code']}0000"] = province_name
+
             for city in cities:
-                # city_name = f"{province_name}{city['name']}"
-                code = city['code'] if len(city['code']) == 6 else f"{city['code']}00"
-                city_area_codes.append(code)
-        
-        return city_area_codes
+                city_name = f"{province_name}{city['name']}"
+                code = city['code'] if len(
+                    city['code']) == 6 else f"{city['code']}00"
+                area_code_dict[city_name] = code
+                area_code_dict[code] = city_name
+
+        return area_code_dict
 
     async def test_spider_services(db_client,
                                    db_name,
@@ -276,7 +302,8 @@ if __name__ == "__main__":
                                    result_model_class,
                                    result_data_model,
                                    test_urls,
-                                   rules):
+                                   rules,
+                                   area_code_dict):
         db = db_client[db_name]
         result_model_class.db = db
         # html_model_class.db = db
@@ -284,10 +311,9 @@ if __name__ == "__main__":
         async with (await client_session_class(headers=headers, cookies=cookies)) as client_session:
             spider_service = spider_service_class(request_client=client_session,
                                                   spider_class=spider_class,
-                                                  parse_strategy_factory=parse_strategy_factory,
-                                                  crawling_strategy_factory=crawling_strategy_factory,
                                                   result_db_model=result_model_class,
-                                                  result_data_model=result_data_model)
+                                                  result_data_model=result_data_model,
+                                                  area_code_dict=area_code_dict)
             await spider_service.crawl(test_urls, rules)
 
     cookie_text = """BIDUPSID=C2730507E1C86942858719FD87A61E58;
@@ -318,14 +344,19 @@ if __name__ == "__main__":
                               port=27017,
                               db_name=use_db)
     urls = [
-        "https://huiyan.baidu.com/migration/historycurve.json"
+        "https://huiyan.baidu.com/migration/provincerank.jsonp"
     ]
-    city_area_codes = get_area_codes(f"{getcwd()}/spider_services/migration_rank_spider/app/service_configs/pc-code.json")
-    print(city_area_codes)
+    city_area_codes = get_area_codes(f"{getcwd()}/spider_services/migration_index_spider/app/service_configs/pc-code.json")
+    area_code_dict = get_area_code_dict(
+        f"{getcwd()}/spider_services/migration_index_spider/app/service_configs/pc-code.json")
     config = ScrapeRules(
         max_concurrency=100,
         max_retry=10,
         mode='update',
+        time_range=TimeRange(
+            start_date=parser.parse('20200101'),
+            end_date=parser.parse('20210926')
+        ),
         keywords=KeywordRules(
             include=city_area_codes
         )
@@ -347,5 +378,6 @@ if __name__ == "__main__":
         result_model_class=MigrationRankDBModel,
         result_data_model=MigrationRank,
         test_urls=urls,
-        rules=config
+        rules=config,
+        area_code_dict=area_code_dict
     ))

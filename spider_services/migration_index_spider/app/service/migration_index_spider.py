@@ -336,7 +336,7 @@ if __name__ == "__main__":
     config = ScrapeRules(
         max_concurrency=100,
         max_retry=10,
-        mode='update',
+        mode='history',
         keywords=KeywordRules(
             include=city_area_codes
         )
