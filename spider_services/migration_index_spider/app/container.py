@@ -3,14 +3,14 @@ from ...common.db.client import create_client
 from ...common.core import (
     RequestClient,
     AsyncBrowserRequestClient,
-    ParserContextFactory,
-    CrawlerContextFactory,
     Spider
 )
-from ...common.models.db_models import CMAWeatherReportDBModel
-from ...common.models.data_models import CMAWeatherReport
+from ...common.models.db_models import MigrationIndexDBModel, MigrationRankDBModel
+from ...common.models.data_models import MigrationRank, MigrationIndex
 
-from .service import CMAWeatherReportSpiderService
+from .service import MigrationRankSpiderService, MigrationIndexSpiderService
+from .utils import get_area_code_dict
+from os import getcwd
 
 async def make_request_client(headers, cookies):
     async with (await RequestClient(headers=headers, cookies=cookies)) as client:
@@ -56,15 +56,24 @@ class ResourceContainer(containers.DeclarativeContainer):
 class ServiceContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
     resources = providers.DependenciesContainer()
-
-    weather_forecast_spider_service = providers.Singleton(
-        CMAWeatherReportSpiderService,
-        request_client=resources.browser_client,
+    area_code_dict = providers.Object(
+        get_area_code_dict(f"{getcwd()}/spider_services/migration_index_spider/app/service_configs/pc-code.json"))
+    
+    migration_index_spider_service = providers.Singleton(
+        MigrationIndexSpiderService,
+        request_client=resources.http_request_client,
         spider_class=Spider,
-        parse_strategy_factory=ParserContextFactory,
-        crawling_strategy_factory=CrawlerContextFactory,
-        result_db_model=CMAWeatherReportDBModel,
-        result_data_model=CMAWeatherReport
+        result_db_model=MigrationIndexDBModel,
+        result_data_model=MigrationIndex
+    )
+
+    migration_rank_spider_service = providers.Singleton(
+        MigrationRankSpiderService,
+        request_client=resources.http_request_client,
+        spider_class=Spider,
+        result_db_model=MigrationRankDBModel,
+        result_data_model=MigrationRank,
+        area_code_dict=area_code_dict
     )
 
 class Application(containers.DeclarativeContainer):

@@ -1,4 +1,5 @@
 from typing import Optional, List, Union
+from typing_extensions import Literal
 from pydantic import BaseModel, validator
 from datetime import date, datetime
 from ...enums import ContentType, JobType, Parser, ParseRuleType
@@ -139,7 +140,16 @@ class AQISpiderArgs(BaseModel):
 class CMAWeatherSpiderArgs(BaseModel):
     url: str = 'http://weather.cma.cn'
     
+class MigrationIndexSpiderArgs(BaseModel):
+    url: str = "https://huiyan.baidu.com/migration/historycurve.json"
+    mode: Literal['update', 'history'] = 'update'
+    
 
+class MigrationRankSpiderArgs(BaseModel):
+    url: str = "https://huiyan.baidu.com/migration/provincerank.jsonp"
+    mode: Literal['update', 'history'] = 'update'
+    start_date: Optional[str] = '2020-01-01'
+    end_date: Optional[str] = datetime.now().strftime("%Y-%m-%d")
 
 class ResultQuery(BaseModel):
     """ Holds parameters for a result query

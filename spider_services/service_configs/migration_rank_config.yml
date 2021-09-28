@@ -1,0 +1,63 @@
+!!python/object:spider_services.common.models.request_models.request_models.ScrapeRules
+__dict__:
+  api_urls: null
+  keywords: !!python/object:spider_services.common.models.request_models.request_models.KeywordRules
+    __dict__:
+      exclude: []
+      include:
+      - '110000'
+      - '120000'
+      - '130000'
+      - '140000'
+      - '150000'
+      - '210000'
+      - '220000'
+      - '230000'
+      - '310000'
+      - '320000'
+      - '330000'
+      - '340000'
+      - '350000'
+      - '360000'
+      - '370000'
+      - '410000'
+      - '420000'
+      - '430000'
+      - '440000'
+      - '450000'
+      - '460000'
+      - '500000'
+      - '510000'
+      - '520000'
+      - '530000'
+      - '540000'
+      - '610000'
+      - '620000'
+      - '630000'
+      - '640000'
+      - '650000'
+    __fields_set__: !!set
+      include: null
+  max_concurrency: 100
+  max_depth: null
+  max_pages: null
+  max_retry: 10
+  max_size: null
+  mode: update
+  parsing_pipeline: null
+  request_params: {}
+  time_range: !!python/object:spider_services.common.models.request_models.request_models.TimeRange
+    __dict__:
+      end_date: 2021-09-28 16:31:30.731092
+      past_days: null
+      start_date: 2020-01-01 00:00:00
+    __fields_set__: !!set
+      end_date: null
+      start_date: null
+  url_patterns: null
+__fields_set__: !!set
+  keywords: null
+  max_concurrency: null
+  max_retry: null
+  mode: null
+  time_range: null

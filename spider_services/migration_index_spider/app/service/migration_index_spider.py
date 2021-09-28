@@ -1,27 +1,20 @@
-import re
 import ujson
 import asyncio
-import aiohttp
 from typing import Any, Tuple
-from functools import partial
 from datetime import datetime, timedelta
-from pymongo import InsertOne, DeleteMany, ReplaceOne, UpdateOne
-from typing import List, Callable, Union
-from collections import namedtuple
-from concurrent.futures import ProcessPoolExecutor
+from pymongo import UpdateOne
+from typing import List, Callable
 from ....common.service.base_services import BaseSpiderService
-from ....common.models.data_models import Location, MigrationIndex
+from ....common.models.data_models import MigrationIndex
 
-from ....common.models.request_models import ScrapeRules, ParseRule
+from ....common.models.request_models import ScrapeRules
 from ....common.models.db_models import MigrationIndexDBModel
 from ....common.core import (
     BaseSpider, ParserContextFactory, AsyncBrowserRequestClient, RequestClient, CrawlerContextFactory)
 from ....common.utils import throttled
 import traceback
 import logging
-from logging import Logger, getLogger
-from dateutil import parser
-from devtools import debug
+from logging import Logger
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%dT%H:%M:%S%z")
@@ -201,10 +194,15 @@ class MigrationIndexSpiderService(BaseSpiderService):
                     self._crawl_migration_indexes(base_url, areaCodes, 'move_in', rules.max_retry, rules.max_concurrency, rules.mode),
                     self._crawl_migration_indexes(base_url, areaCodes, 'move_out', rules.max_retry, rules.max_concurrency, rules.mode)
                 ])
+            self._logger.info(move_in_indexes)
+            self._logger.info(move_out_indexes)
             migration_indexes = move_in_indexes + move_out_indexes
             migration_indexes_db_objects = self._result_db_model.parse_many(migration_indexes)
             
             if rules.mode == 'update':
+                if len(migration_indexes_db_objects) == 0:
+                    self._logger.info("Nothing to update")
+                    return
                 await self._batch_update(migration_indexes_db_objects)
             else:
                 await self._result_db_model.insert_many(migration_indexes_db_objects)

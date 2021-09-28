@@ -1,27 +1,21 @@
-import re
 import ujson
 import asyncio
-import aiohttp
 from typing import Any, Tuple
-from functools import partial
-from datetime import datetime, timedelta
-from pymongo import InsertOne, DeleteMany, ReplaceOne, UpdateOne
-from typing import List, Callable, Union
-from collections import namedtuple
-from concurrent.futures import ProcessPoolExecutor
+from datetime import datetime
+from pymongo import UpdateOne
+from typing import List, Callable
+from typing_extensions import Literal
 from ....common.service.base_services import BaseSpiderService
 from ....common.models.data_models import MigrationRank
 
-from ....common.models.request_models import ScrapeRules, ParseRule
+from ....common.models.request_models import ScrapeRules
 from ....common.models.db_models import MigrationRankDBModel
 from ....common.core import (
     BaseSpider, ParserContextFactory, BaseRequestClient, RequestClient, CrawlerContextFactory)
 from ....common.utils import throttled
 import traceback
 import logging
-from logging import Logger, getLogger
-from dateutil import parser
-from devtools import debug
+from logging import Logger
 from pandas import date_range
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
@@ -180,7 +174,11 @@ class MigrationRankSpiderService(BaseSpiderService):
             return []
           
     async def _batch_update(self, migration_ranks: List[MigrationRankDBModel]):
-        batch_update_op = [UpdateOne({'date': index.date, 'areaCode': index.areaCode}, {'$set': index.mongo(update=True)}, upsert=True)
+        batch_update_op = [UpdateOne({
+                             'date': index.date,
+                             'from_province_areaCode': index.from_province_areaCode,
+                             'to_province_areaCode': index.to_province_areaCode,
+                            }, {'$set': index.mongo(update=True)}, upsert=True)
                            for index in migration_ranks]
         await self._result_db_model.bulk_write(batch_update_op)
           
@@ -205,10 +203,7 @@ class MigrationRankSpiderService(BaseSpiderService):
             migration_ranks = move_in_indexes + move_out_indexes
             migration_ranks_db_objects = self._result_db_model.parse_many(migration_ranks)
             
-            if rules.mode == 'update':
-                await self._batch_update(migration_ranks_db_objects)
-            else:
-                await self._result_db_model.insert_many(migration_ranks_db_objects)
+            await self._result_db_model.insert_many(migration_ranks_db_objects)
             
             self._logger.info("Done!")
         except Exception as e:
@@ -343,6 +338,7 @@ if __name__ == "__main__":
                               password='root',
                               port=27017,
                               db_name=use_db)
+    print(type(db_client))
     urls = [
         "https://huiyan.baidu.com/migration/provincerank.jsonp"
     ]
@@ -354,15 +350,15 @@ if __name__ == "__main__":
         max_retry=10,
         mode='update',
         time_range=TimeRange(
-            start_date=parser.parse('20200101'),
-            end_date=parser.parse('20210926')
+            start_date=parser.parse('20210926'),
+            end_date=datetime.now()
         ),
         keywords=KeywordRules(
             include=city_area_codes
         )
     )
     
-    # save_config(config, './spider_services/migration_rank_spider/app/service_configs/migration_rank_config.yml')
+    # save_config(config, './spider_services/migration_index_spider/app/service_configs/migration_rank_config.yml')
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(test_spider_services(
