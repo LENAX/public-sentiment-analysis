@@ -5,13 +5,16 @@ import ujson
 import traceback
 from datetime import datetime, timedelta
 
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
+                    datefmt="%Y-%m-%dT%H:%M:%S%z")
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 async def run_migration_index_spider(mode: str = 'update', logger=logger):
     try:
         async with aiohttp.ClientSession(json_serialize=ujson.dumps) as session:
-            async with session.post('/migration-index-spider/crawl-task',
+            async with session.post('http://localhost:8006/migration-index-spider/crawl-task',
                                     json={
                                         "url": "https://huiyan.baidu.com/migration/historycurve.json",
                                         "mode": mode
@@ -29,7 +32,7 @@ async def run_migration_rank_spider(mode: str = 'update', logger=logger):
         yesterday = datetime.now() - timedelta(days=1)
         
         async with aiohttp.ClientSession(json_serialize=ujson.dumps) as session:
-            async with session.post('/migration-index-spider/crawl-task',
+            async with session.post('http://localhost:8006/migration-rank-spider/crawl-task',
                                     json={
                                         "url": "https://huiyan.baidu.com/migration/provincerank.jsonp",
                                         "mode": mode,
