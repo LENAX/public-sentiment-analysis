@@ -1,13 +1,17 @@
+import logging
 import re
 from datetime import datetime, timedelta
-from typing import List, Callable
-from ...common.service.base_services import BaseSpiderService
-from ...common.models.request_models import ScrapeRules, ParseRule
-from ...common.models.db_models import News
-from ...common.core import BaseSpider, ParserContextFactory, BaseRequestClient, ParserContext
-from ...common.utils import throttled
-import logging
 from logging import Logger
+from spider_services.common.models.data_models.parser_models import ParseResult
+from typing import Callable, List, Tuple
+
+from ...common.core import (BaseRequestClient, BaseSpider, ParserContext,
+                            ParserContextFactory)
+from ...common.models.data_models import News
+from ...common.models.db_models import NewsDBModel
+from ...common.models.request_models import ParseRule, ScrapeRules, TimeRange
+from ...common.service.base_services import BaseSpiderService
+from ...common.utils import throttled
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
@@ -28,14 +32,14 @@ class BaiduNewsSpider(BaseSpiderService):
                  request_client: BaseRequestClient,
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
-                 result_db_model: News,
+                 db_model: NewsDBModel,
                  throttled_fetch: Callable = throttled,
                  logger: Logger = spider_service_logger,
                  **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
-        self._result_db_model = result_db_model
+        self._db_model = db_model
         self._throttled_fetch = throttled_fetch
         self._logger = logger
         self._create_time_string_extractors()
@@ -103,7 +107,7 @@ class BaiduNewsSpider(BaseSpiderService):
                        for kw in keywords]
         return search_urls
     
-    def _parse_news_blocks(self, news_query_pages: List[str], parser: ParserContext, parse_rules: List[ParseRule]):
+    def _parse_news_blocks(self, news_query_pages: List[Tuple[str, str]], parser: ParserContext, parse_rules: List[ParseRule]):
         parsed_search_result = []
 
         self._logger.info(f"Standardizing news' publish dates..")
@@ -122,6 +126,72 @@ class BaiduNewsSpider(BaseSpiderService):
 
         self._logger.info(f"News list is parsed.")
         self._logger.info(f"News' publish dates standardized.")
+        
+        return parsed_search_result
+    
+    def _apply_date_range_filter(self, parsed_search_result: List[ParseResult], time_range: TimeRange):
+        self._logger.info(f"Applying time filters")
+        if time_range.past_days:
+            last_date = datetime.now() - timedelta(days=time_range.past_days)
+            parsed_search_result = [result for result in parsed_search_result
+                                    if 'date' in result.value and result.value['date'].value >= last_date]
+        elif time_range.start_date and time_range.end_date:
+            parsed_search_result = [result for result in parsed_search_result
+                                    if ('date' in result.value and
+                                        time_range.end_date <= result.value['date'].value < time_range.start_date)]
+        elif time_range.start_date:
+            parsed_search_result = [result for result in parsed_search_result
+                                    if ('date' in result.value and
+                                        time_range.end_date <= result.value['date'].value)]
+        elif time_range.start_date and time_range.end_date:
+            parsed_search_result = [result for result in parsed_search_result
+                                    if ('date' in result.value and
+                                        result.value['date'].value < time_range.start_date)]
+        
+        return parsed_search_result
+    
+    
+    def _apply_keyword_filter(self,  parsed_search_result: List[ParseResult], keywords_to_exclude: List[str]):
+        exclude_kws = "|".join(keywords_to_exclude)
+        exclude_patterns = re.compile(f'^((?!{exclude_kws}).)*$')
+        parsed_search_result = [result for result in parsed_search_result
+                                if ('abstract' in result.value and
+                                    'title' in result.value and
+                                    re.finditer(exclude_patterns, result.value['abstract']) and
+                                    re.finditer(exclude_patterns, result.value['title']))]
+        return parsed_search_result
+    
+    
+    async def _fetch_news(self, parsed_search_result: List[ParseResult], max_concurrency: int):
+        if len(parsed_search_result) == 0:
+            return []
+        
+        content_urls = [result.value['href'].value for result in parsed_search_result]
+        content_spiders = self._spider_class.create_from_urls(
+            content_urls, self._request_client)
+        content_pages = await self._throttled_fetch(max_concurrency, [spider.fetch() for spider in content_spiders])
+
+        self._logger.info(f"Fetched {len(content_pages)} news pages")
+        return content_pages
+    
+    def _parse_news(self, content_pages: List[Tuple[str, str]], content_parser: ParserContext, parse_rules: List[ParseRule]) -> List[NewsDBModel]:
+        self._logger.info(f"Start parsing news pages")
+        results = []
+
+        for i, page in enumerate(content_pages):
+            self._logger.info(f"parsing {i}/{len(content_pages)}")
+            content_url, content_page = page
+            if len(content_page) == 0:
+                self._logger.error(f"failed to fetch url: {content_url}")
+                continue
+
+            parsed_contents = content_parser.parse(content_page, parse_rules)
+            content_dict = {result.name: result.value for result in parsed_contents}
+            news = self._db_model.parse_obj(content_dict)
+            news.link = content_url
+            results.append(news)
+            
+        return results
 
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Crawl search results within given rules like time range, keywords, and etc.
@@ -134,129 +204,67 @@ class BaiduNewsSpider(BaseSpiderService):
             rules: rules the spider should follow. This mode expects keywords and size from users.
         """
         # if user provides no url, use default url
-        spiders = []
+        try:
+            # require the user to provide url, max_pages and keywords
+            assert (len(urls) > 0 and
+                    type(rules.max_pages) is int and rules.keywords is not None and
+                    len(rules.keywords.include) > 0 and rules.parsing_pipeline is not None and 
+                    len(rules.parsing_pipeline) >= 2)
 
-        # require the user to provide url, max_pages and keywords
-        assert (len(urls) > 0 and
-                type(rules.max_pages) is int and
-                len(rules.keywords.include) > 0)
+            self._logger.info("Parameters are validated. Prepare crawling...")
+            self._logger.info("Start crawling news...")
 
-        self._logger.info("Parameters are validated. Prepare crawling...")
-        self._logger.info("Start crawling news...")
+            # generate search page urls given keywords and page limit
+            news_query_urls = self._build_news_query_urls(
+                urls[0], rules.keywords.include, rules.max_pages)
+            spiders = self._spider_class.create_from_urls(news_query_urls, self._request_client)
 
-        # generate search page urls given keywords and page limit
-        news_query_urls = self._build_news_query_urls(
-            urls[0], rules.keywords.include, rules.max_pages)
-        spiders = self._spider_class.create_from_urls(news_query_urls)
+            # concurrently fetch search results with a concurrency limit
+            # TODO: could boost parallelism by running parsers at the same time
+            search_result_pages = await self._throttled_fetch(
+                rules.max_concurrency, [spider.fetch() for spider in spiders])
 
-        # concurrently fetch search results with a concurrency limit
-        # TODO: could boost parallelism by running parsers at the same time
-        search_result_pages = await self._throttled_fetch(
-            rules.max_concurrency, [spider.fetch() for spider in spiders])
+            self._logger.info(
+                f"Crawl completed. Fetched {len(search_result_pages)} results.")
+            self._logger.info(f"Start crawling news pages...")
+            self._logger.info(f"Parsing news list...")
+            # for now, the pipeline is fixed to the following
+            # 1. extract all search result blocks from search result pages (title, href, abstract, date)
+            # step 1 will produce a list of List[ParseResult], and have to assume the order to work correctly
+            # collect search results from parser, which has the form ParseResult(name=item, value={'attribute': ParseResult(name='attribute', value='...')})
+            search_page_parser = self._parse_strategy_factory.create(rules.parsing_pipeline[0].parser)
+            parsed_search_result = self._parse_news_blocks(search_result_pages, search_page_parser, rules.parsing_pipeline[0].parse_rules)
 
-        self._logger.info(
-            f"Crawl completed. Fetched {len(search_result_pages)} results.")
-        self._logger.info(f"Start crawling news pages...")
-        self._logger.info(f"Parsing news list...")
-        # for now, the pipeline is fixed to the following
-        # 1. extract all search result blocks from search result pages (title, href, abstract, date)
-        # step 1 will produce a list of List[ParseResult], and have to assume the order to work correctly
-        # collect search results from parser, which has the form ParseResult(name=item, value={'attribute': ParseResult(name='attribute', value='...')})
-        parsed_search_result = []
-        search_page_parser = self._parse_strategy_factory.create(
-            rules.parsing_pipeline[0].parser)
+            # 2. if date is provided, parse date strings and include those pages within date range
+            if (len(parsed_search_result) > 0 and rules.time_range):
+                self._logger.info(f"Applying time filters")
+                parsed_search_result = self._apply_date_range_filter(parsed_search_result, rules.time_range)
 
-        self._logger.info(f"Standardizing news' publish dates..")
+            # 3. if keyword exclude is provided, exclude all pages having those keywords
+            if (len(parsed_search_result) > 0 and rules.keywords and rules.keywords.exclude):
+                self._logger.info(f"Applying keyword filters...")
+                parsed_search_result = self._apply_keywords_filter(parsed_search_result, rules.keywords.exclude)
 
-        for _, raw_page in search_result_pages:
-            search_results = search_page_parser.parse(
-                raw_page, rules.parsing_pipeline[0].parse_rules)
+            self._logger.info(
+                f"Got {len(parsed_search_result)} after filtering...")
+            self._logger.info(f"Start crawling news pages...")
+           
+            # 4. fetch remaining pages
+            content_pages = await self._fetch_news(parsed_search_result, rules.max_concurrency)
 
-            # standardize datetime
-            for result in search_results:
-                result_attributes = result.value
-                if 'date' in result_attributes:
-                    result_attributes['date'].value = self._standardize_datetime(
-                        result_attributes['date'].value)
+            # 5. use the last pipeline and extract contents. (title, content, url)
+            self._logger.info(f"Start parsing news pages")
+            content_parser = self._parse_strategy_factory.create(
+                rules.parsing_pipeline[1].parser)
+            results = self._parse_news(content_pages, content_parser, rules.parsing_pipeline[1].parse_rules)
 
-            parsed_search_result.extend(search_results)
+            # 6. finally save results to db
+            if len(results) > 0:
+                self._logger.info(f"Saving results...")
+                await self._db_model.insert_many(results)
+                self._logger.info("Done!")
+            else:
+                self._logger.info("No new results retrieved in this run...")
 
-        self._logger.info(f"News list is parsed.")
-        self._logger.info(f"News' publish dates standardized.")
-
-        # 2. if date is provided, parse date strings and include those pages within date range
-        if (len(parsed_search_result) > 0 and rules.time_range):
-            self._logger.info(f"Applying time filters")
-            if rules.time_range.past_days:
-                last_date = datetime.now() - timedelta(days=rules.time_range.past_days)
-                parsed_search_result = [result for result in parsed_search_result
-                                        if 'date' in result.value and result.value['date'].value >= last_date]
-            elif rules.time_range.date_before and rules.time_range.date_after:
-                parsed_search_result = [result for result in parsed_search_result
-                                        if ('date' in result.value and
-                                            rules.time_range.date_after <= result.value['date'].value < rules.time_range.date_before)]
-            elif rules.time_range.date_before:
-                parsed_search_result = [result for result in parsed_search_result
-                                        if ('date' in result.value and
-                                            rules.time_range.date_after <= result.value['date'].value)]
-            elif rules.time_range.date_before and rules.time_range.date_after:
-                parsed_search_result = [result for result in parsed_search_result
-                                        if ('date' in result.value and
-                                            result.value['date'].value < rules.time_range.date_before)]
-
-        # 3. if keyword exclude is provided, exclude all pages having those keywords
-        if (len(parsed_search_result) > 0 and rules.keywords and rules.keywords.exclude):
-            self._logger.info(f"Applying keyword filters...")
-            exclude_kws = "|".join(rules.keywords.exclude)
-            exclude_patterns = re.compile(f'^((?!{exclude_kws}).)*$')
-            parsed_search_result = [result for result in parsed_search_result
-                                    if ('abstract' in result.value and
-                                        'title' in result.value and
-                                        re.finditer(exclude_patterns, result.value['abstract']) and
-                                        re.finditer(exclude_patterns, result.value['title']))]
-
-        self._logger.info(
-            f"Got {len(parsed_search_result)} after filtering...")
-        self._logger.info(f"Start crawling news pages...")
-        # 4. fetch remaining pages
-        content_pages = []
-        if (len(parsed_search_result) > 0):
-            content_urls = [
-                result.value['href'].value for result in parsed_search_result]
-            content_spiders = self._spider_class.create_from_urls(
-                content_urls, self._request_client)
-            content_pages = await self._throttled_fetch(
-                rules.max_concurrency, [spider.fetch() for spider in content_spiders])
-
-            self._logger.info(f"Fetched {len(content_pages)} news pages")
-
-        # 5. use the last pipeline and extract contents. (title, content, url)
-        self._logger.info(f"Start parsing news pages")
-        content_parser = self._parse_strategy_factory.create(
-            rules.parsing_pipeline[1].parser)
-        results = []
-
-        for i, page in enumerate(content_pages):
-            self._logger.info(f"parsing {i}/{len(content_pages)}")
-            content_url, content_page = page
-            if len(content_page) == 0:
-                self._logger.error(f"failed to fetch url: {content_url}")
-                continue
-
-            parsed_contents = content_parser.parse(
-                content_page, rules.parsing_pipeline[1].parse_rules)
-            content_dict = {
-                result.name: result.value for result in parsed_contents}
-            news = self._result_db_model.parse_obj(content_dict)
-            news.url = content_url
-            results.append(news)
-
-        # 6. finally save results to db
-        if len(results) > 0:
-            self._logger.info(f"Saving results...")
-            await self._result_db_model.insert_many(results)
-            self._logger.info("Done!")
-        else:
-            self._logger.info("No new results retrieved in this run...")
-
-
+        except Exception as e:
+            print('An exception occurred')

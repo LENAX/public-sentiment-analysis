@@ -5,7 +5,7 @@ from .result import Result
 from .air_quality import AirQualityDBModel
 from .covid_report import COVIDReport as BaiduCOVIDReport
 from .phes_covid_report import COVIDReport as PHESCOVIDReport
-from .news import News
+from .news import NewsDBModel
 from .weather import Weather
 from .weather_report import WeatherReportDBModel
 from .cma_weather_report import CMAWeatherReportDBModel
@@ -22,7 +22,7 @@ def bind_db_to_all_models(db_client, db_name: str) -> None:
     AirQualityDBModel.db = db
     BaiduCOVIDReport.db = db
     PHESCOVIDReport.db = db
-    News.db = db
+    NewsDBModel.db = db
     Weather.db = db
     WeatherReportDBModel.db = db
     CMAWeatherReportDBModel.db = db

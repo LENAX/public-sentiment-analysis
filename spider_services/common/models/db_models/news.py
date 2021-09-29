@@ -6,7 +6,7 @@ from pydantic import Field
 from uuid import UUID, uuid5, NAMESPACE_OID
 
 
-class News(DBModel, News):
+class NewsDBModel(DBModel, News):
     __collection__: str = "News"
     __db__: AsyncIOMotorDatabase
 
