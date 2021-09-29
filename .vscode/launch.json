@@ -6,6 +6,7 @@
     "configurations": [
 
 
+
         {
             "name": "Main Server",
             "type": "python",
@@ -99,6 +100,18 @@
             "type": "python",
             "request": "launch",
             "module": "data_services.air_quality.app.services.aqi_report_service"
+        },
+        {
+            "name": "Migration Index Data Service",
+            "type": "python",
+            "request": "launch",
+            "module": "data_services.migration_index.app.services.migration_index_service"
+        },
+        {
+            "name": "Migration Rank Data Service",
+            "type": "python",
+            "request": "launch",
+            "module": "data_services.migration_index.app.services.migration_rank_service"
         },
         {
             "name": "Word Cloud Service",
