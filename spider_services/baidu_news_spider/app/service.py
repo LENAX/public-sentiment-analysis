@@ -1,18 +1,16 @@
 import re
-import asyncio
 from datetime import datetime, timedelta
 from typing import List, Callable
-from concurrent.futures import ProcessPoolExecutor
 from ...common.service.base_services import BaseSpiderService
-from ...common.models.request_models import ScrapeRules
+from ...common.models.request_models import ScrapeRules, ParseRule
 from ...common.models.db_models import News
-from ...common.core import BaseSpider, ParserContextFactory, BaseRequestClient
+from ...common.core import BaseSpider, ParserContextFactory, BaseRequestClient, ParserContext
 from ...common.utils import throttled
 import logging
-from logging import Logger, getLogger
+from logging import Logger
 
-logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
-                    datefmt="%Y-%m-%dT%H:%M:%S%z")
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S")
 spider_service_logger = logging.getLogger(__name__)
 spider_service_logger.setLevel(logging.DEBUG)
 
@@ -31,19 +29,13 @@ class BaiduNewsSpider(BaseSpiderService):
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
                  result_db_model: News,
-                 coroutine_runner: Callable = asyncio.gather,
-                 event_loop_getter: Callable = asyncio.get_event_loop,
-                 process_pool_executor: ProcessPoolExecutorClass = ProcessPoolExecutor,
                  throttled_fetch: Callable = throttled,
-                 logger: Logger = getLogger(f"{__name__}.BaiduNewsSpider"),
+                 logger: Logger = spider_service_logger,
                  **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
         self._result_db_model = result_db_model
-        self._coroutine_runner = coroutine_runner
-        self._event_loop_getter = event_loop_getter
-        self._process_pool_executor = process_pool_executor
         self._throttled_fetch = throttled_fetch
         self._logger = logger
         self._create_time_string_extractors()
@@ -104,13 +96,34 @@ class BaiduNewsSpider(BaseSpiderService):
                 return converted
 
         return converted
+    
+    def _build_news_query_urls(self, base_url: str, keywords: List[str], max_page: int) -> List[str]:
+        search_urls = [f"{base_url}&word={kw}&pn={page_number}"
+                       for page_number in range(max_page)
+                       for kw in keywords]
+        return search_urls
+    
+    def _parse_news_blocks(self, news_query_pages: List[str], parser: ParserContext, parse_rules: List[ParseRule]):
+        parsed_search_result = []
 
-    def _group_fields_by(self, columns: List[str]):
-        pass
+        self._logger.info(f"Standardizing news' publish dates..")
 
-    async def crawl(self, urls: List[str],
-                    rules: ScrapeRules,
-                    paging_param: str = "pn") -> None:
+        for _, raw_page in news_query_pages:
+            search_results = parser.parse(raw_page, parse_rules)
+
+            # standardize datetime
+            for result in search_results:
+                result_attributes = result.value
+                if 'date' in result_attributes:
+                    result_attributes['date'].value = self._standardize_datetime(
+                        result_attributes['date'].value)
+
+            parsed_search_result.extend(search_results)
+
+        self._logger.info(f"News list is parsed.")
+        self._logger.info(f"News' publish dates standardized.")
+
+    async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Crawl search results within given rules like time range, keywords, and etc.
         
         User will provide the search page url of Baidu News (https://www.baidu.com/s?tn=news&ie=utf-8).
@@ -132,12 +145,9 @@ class BaiduNewsSpider(BaseSpiderService):
         self._logger.info("Start crawling news...")
 
         # generate search page urls given keywords and page limit
-        for search_base_url in urls:
-            search_urls = [f"{search_base_url}&word={kw}&{paging_param}={page_number}"
-                           for page_number in range(rules.max_pages)
-                           for kw in rules.keywords.include]
-            spiders.extend(self._spider_class.create_from_urls(
-                search_urls, self._request_client))
+        news_query_urls = self._build_news_query_urls(
+            urls[0], rules.keywords.include, rules.max_pages)
+        spiders = self._spider_class.create_from_urls(news_query_urls)
 
         # concurrently fetch search results with a concurrency limit
         # TODO: could boost parallelism by running parsers at the same time

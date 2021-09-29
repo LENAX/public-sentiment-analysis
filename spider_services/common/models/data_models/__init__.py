@@ -12,7 +12,7 @@ from .schedule_model import Schedule
 from .job_models import JobData
 from .weather_model import WeatherData
 from .air_quality_model import AirQuality
-from .news_model import NewsData
+from .news import News
 from .covid_report_model import COVIDReportData
 from .specification_model import SpecificationData
 from .job_status_model import JobStatus
