@@ -4,9 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
-
-
         {
             "name": "Main Server",
             "type": "python",
@@ -70,6 +67,12 @@
             "type": "python",
             "request": "launch",
             "module": "spider_services.cma_weather_report_spider.app.service"
+        },
+        {
+            "name": "Baidu News Spider",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.baidu_news_spider.app.service"
         },
         {
             "name": "Migration Index Spider",

@@ -1,9 +1,15 @@
 import logging
 import re
+import traceback
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta
+from inspect import trace
 from logging import Logger
-from typing import Callable, List, Tuple
+from multiprocessing import cpu_count
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import pytz
+from dateutil import parser as dt_parser
 from spider_services.common.models.data_models.parser_models import ParseResult
 
 from ...common.core import (BaseRequestClient, BaseSpider, ParserContext,
@@ -13,6 +19,8 @@ from ...common.models.db_models import NewsDBModel
 from ...common.models.request_models import ParseRule, ScrapeRules, TimeRange
 from ...common.service.base_services import BaseSpiderService
 from ...common.utils import throttled
+
+utc = pytz.UTC
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
@@ -33,15 +41,23 @@ class BaiduNewsSpider(BaseSpiderService):
                  request_client: BaseRequestClient,
                  spider_class: BaseSpider,
                  parse_strategy_factory: ParserContextFactory,
+                 data_model: News,
                  db_model: NewsDBModel,
+                 datetime_parser: Callable = dt_parser,
                  throttled_fetch: Callable = throttled,
+                 process_pool_executor: ProcessPoolExecutor = ProcessPoolExecutor,
+                 n_cpu: int = cpu_count(),
                  logger: Logger = spider_service_logger,
                  **kwargs) -> None:
         self._request_client = request_client
         self._spider_class = spider_class
         self._parse_strategy_factory = parse_strategy_factory
+        self._data_model = data_model
         self._db_model = db_model
+        self._datetime_parser = datetime_parser
         self._throttled_fetch = throttled_fetch
+        self._process_pool_executor = process_pool_executor
+        self._n_cpu = n_cpu
         self._logger = logger
         self._create_time_string_extractors()
 
@@ -108,10 +124,10 @@ class BaiduNewsSpider(BaseSpiderService):
                        for kw in keywords]
         return search_urls
     
-    def _parse_news_blocks(self, news_query_pages: List[Tuple[str, str]], parser: ParserContext, parse_rules: List[ParseRule]):
+    def _fill_news_contents_blocks(self, news_query_pages: List[Tuple[str, str]], parser: ParserContext, parse_rules: List[ParseRule]):
         parsed_search_result = []
 
-        self._logger.info(f"Standardizing news' publish dates..")
+        self._logger.info(f"Parsing news blocks..")
 
         for _, raw_page in news_query_pages:
             search_results = parser.parse(raw_page, parse_rules)
@@ -119,9 +135,9 @@ class BaiduNewsSpider(BaseSpiderService):
             # standardize datetime
             for result in search_results:
                 result_attributes = result.value
-                if 'date' in result_attributes:
-                    result_attributes['date'].value = self._standardize_datetime(
-                        result_attributes['date'].value)
+                if 'publishDate' in result_attributes:
+                    result_attributes['publishDate'].value = self._standardize_datetime(
+                        result_attributes['publishDate'].value)
 
             parsed_search_result.extend(search_results)
 
@@ -130,24 +146,31 @@ class BaiduNewsSpider(BaseSpiderService):
         
         return parsed_search_result
     
-    def _apply_date_range_filter(self, parsed_search_result: List[ParseResult], time_range: TimeRange):
+    def _apply_date_range_filter(self, parsed_search_result: Union[List[ParseResult], List[News]], time_range: TimeRange):
+        def _within_date_range(result: Union[ParseResult, News], past_days: Optional[int], start_date: Optional[datetime], end_date: Optional[datetime]):
+            publish_date = result.value['publishDate'].value if type(result) is ParseResult else result.publishDate
+            
+            if publish_date is None:
+                return False
+            
+            if past_days:
+                try:
+                    return publish_date >= datetime.now() - timedelta(days=past_days)
+                except TypeError:
+                    return publish_date >= utc.localize(datetime.now() - timedelta(days=past_days))
+                    
+            elif start_date is not None and end_date is not None:
+                return end_date <= publish_date < start_date
+            elif start_date is not None:
+                return publish_date >= start_date
+            elif end_date is not None:
+                return publish_date < end_date
+            else:
+                return False
+        
         self._logger.info(f"Applying time filters")
-        if time_range.past_days:
-            last_date = datetime.now() - timedelta(days=time_range.past_days)
-            parsed_search_result = [result for result in parsed_search_result
-                                    if 'date' in result.value and result.value['date'].value >= last_date]
-        elif time_range.start_date and time_range.end_date:
-            parsed_search_result = [result for result in parsed_search_result
-                                    if ('date' in result.value and
-                                        time_range.end_date <= result.value['date'].value < time_range.start_date)]
-        elif time_range.start_date:
-            parsed_search_result = [result for result in parsed_search_result
-                                    if ('date' in result.value and
-                                        time_range.end_date <= result.value['date'].value)]
-        elif time_range.start_date and time_range.end_date:
-            parsed_search_result = [result for result in parsed_search_result
-                                    if ('date' in result.value and
-                                        result.value['date'].value < time_range.start_date)]
+        parsed_search_result = [result for result in parsed_search_result
+                                if _within_date_range(result, time_range.past_days, time_range.start_date, time_range.end_date)]
         
         return parsed_search_result
     
@@ -167,7 +190,7 @@ class BaiduNewsSpider(BaseSpiderService):
         if len(parsed_search_result) == 0:
             return []
         
-        content_urls = [result.value['href'].value for result in parsed_search_result]
+        content_urls = [result.value['link'].value for result in parsed_search_result]
         content_spiders = self._spider_class.create_from_urls(
             content_urls, self._request_client)
         content_pages = await self._throttled_fetch(max_concurrency, [spider.fetch() for spider in content_spiders])
@@ -175,25 +198,48 @@ class BaiduNewsSpider(BaseSpiderService):
         self._logger.info(f"Fetched {len(content_pages)} news pages")
         return content_pages
     
-    def _parse_news(self, content_pages: List[Tuple[str, str]], content_parser: ParserContext, parse_rules: List[ParseRule]) -> List[NewsDBModel]:
-        self._logger.info(f"Start parsing news pages")
-        results = []
+    def _to_news(self, parsed_results: List[ParseResult]) -> List[News]:
+        try:
+            news = [self._data_model.parse_obj(result.value_to_dict()) for result in parsed_results]
+            return news
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
+            return []
+    
+    def _fill_news_contents(self, news_dict: Dict[str, News], content_pages: List[Tuple[str, str]],
+                    content_parser: ParserContext, 
+                    parse_rules: List[ParseRule]) -> None:        
+        try:
+            self._logger.info(f"Start parsing news pages")
 
-        for i, page in enumerate(content_pages):
-            self._logger.info(f"parsing {i}/{len(content_pages)}")
-            content_url, content_page = page
-            if len(content_page) == 0:
-                self._logger.error(f"failed to fetch url: {content_url}")
-                continue
+            for i, page in enumerate(content_pages):
+                self._logger.info(f"parsing {i+1}/{len(content_pages)}")
+                content_url, content_page = page
+                if len(content_page) == 0:
+                    self._logger.error(f"failed to fetch news from url: {content_url}")
+                    news_dict.pop(content_url)
+                    continue
 
-            parsed_contents = content_parser.parse(content_page, parse_rules)
-            content_dict = {result.name: result.value for result in parsed_contents}
-            news = self._db_model.parse_obj(content_dict)
-            news.link = content_url
-            results.append(news)
-            
-        return results
-
+                parsed_contents = content_parser.parse(content_page, parse_rules)
+                
+                if all([len(data.value) == 0 for data in parsed_contents]):
+                    self._logger.error(f"failed to parse content from url: {content_url}")
+                    news_dict.pop(content_url)
+                    continue
+                
+                content_dict = {
+                    result.name: result.value for result in parsed_contents}
+                news = news_dict[content_url]
+                news.date = content_dict['publish_time'] if 'publish_time' in content_dict else news.publishDate.strftime("%Y-%m-%d")
+                news.publishDate = self._datetime_parser.parse(content_dict['publish_time']) if 'publish_time' in content_dict else news.publishDate
+                news.content = content_dict['content'] if 'content' in content_dict else ''
+                news.popularity = 1
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
+            raise e
+        
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Crawl search results within given rules like time range, keywords, and etc.
         
@@ -208,7 +254,8 @@ class BaiduNewsSpider(BaseSpiderService):
         try:
             # require the user to provide url, max_pages and keywords
             assert (len(urls) > 0 and
-                    type(rules.max_pages) is int and rules.keywords is not None and
+                    type(rules.max_pages) is int and rules.max_pages > 0 and
+                    rules.keywords is not None and
                     len(rules.keywords.include) > 0 and rules.parsing_pipeline is not None and 
                     len(rules.parsing_pipeline) >= 2)
 
@@ -234,7 +281,7 @@ class BaiduNewsSpider(BaseSpiderService):
             # step 1 will produce a list of List[ParseResult], and have to assume the order to work correctly
             # collect search results from parser, which has the form ParseResult(name=item, value={'attribute': ParseResult(name='attribute', value='...')})
             search_page_parser = self._parse_strategy_factory.create(rules.parsing_pipeline[0].parser)
-            parsed_search_result = self._parse_news_blocks(search_result_pages, search_page_parser, rules.parsing_pipeline[0].parse_rules)
+            parsed_search_result = self._fill_news_contents_blocks(search_result_pages, search_page_parser, rules.parsing_pipeline[0].parse_rules)
 
             # 2. if date is provided, parse date strings and include those pages within date range
             if (len(parsed_search_result) > 0 and rules.time_range):
@@ -246,8 +293,10 @@ class BaiduNewsSpider(BaseSpiderService):
                 self._logger.info(f"Applying keyword filters...")
                 parsed_search_result = self._apply_keywords_filter(parsed_search_result, rules.keywords.exclude)
 
-            self._logger.info(
-                f"Got {len(parsed_search_result)} after filtering...")
+            news_list = self._to_news(parsed_search_result)
+            news_dict = {news.link: news for news in news_list}
+
+            self._logger.info(f"Got {len(parsed_search_result)} after filtering...")
             self._logger.info(f"Start crawling news pages...")
            
             # 4. fetch remaining pages
@@ -257,7 +306,16 @@ class BaiduNewsSpider(BaseSpiderService):
             self._logger.info(f"Start parsing news pages")
             content_parser = self._parse_strategy_factory.create(
                 rules.parsing_pipeline[1].parser)
-            results = self._parse_news(content_pages, content_parser, rules.parsing_pipeline[1].parse_rules)
+            self._fill_news_contents(news_dict, content_pages,
+                                     content_parser, rules.parsing_pipeline[1].parse_rules)
+            
+            filtered_news = news_dict.values()
+            if (len(parsed_search_result) > 0 and rules.time_range):
+                self._logger.info(f"Applying time filters")
+                filtered_news = self._apply_date_range_filter(
+                    news_dict.values(), rules.time_range)
+            
+            results = [self._db_model.parse_obj(news) for news in filtered_news]
 
             # 6. finally save results to db
             if len(results) > 0:
@@ -268,22 +326,14 @@ class BaiduNewsSpider(BaseSpiderService):
                 self._logger.info("No new results retrieved in this run...")
 
         except Exception as e:
-            print('An exception occurred')
+            traceback.print_exc()
+            self._logger.error(e)
+            raise e
+            
 
 
 
-def make_cookies(cookie_text):
-    cookie_strings = cookie_text.replace("\n","").replace(" ","").split(";")
-    cookies = {}
-    for cookie_str in cookie_strings:
-        try:
-            key, value = cookie_str.split("=")
-            cookies[key] = value
-        except IndexError:
-            print(cookie_str)
-        except ValueError:
-            print(cookie_str)
-    return cookies
+
 
 if __name__ == "__main__":
     import asyncio
@@ -315,7 +365,7 @@ if __name__ == "__main__":
         loader_func: Callable=load,
         loader_class: Any=Loader,
         config_class: Any = ScrapeRules,
-        config_path: str = f"{getcwd()}/spider/app/service_configs"
+        config_path: str = f"{getcwd()}/spider_services/service_configs"
     ) -> object:
         with open(f"{config_path}/{config_name}.yml", "r") as f:
             config_text = f.read()
@@ -327,6 +377,19 @@ if __name__ == "__main__":
         with open(path, 'w+') as f:
             config_text = dump(config, Dumper=dump_class)
             f.write(config_text)
+            
+    def make_cookies(cookie_text):
+        cookie_strings = cookie_text.replace("\n", "").replace(" ", "").split(";")
+        cookies = {}
+        for cookie_str in cookie_strings:
+            try:
+                key, value = cookie_str.split("=")
+                cookies[key] = value
+            except IndexError:
+                print(cookie_str)
+            except ValueError:
+                print(cookie_str)
+        return cookies
 
     async def test_spider_services(db_client,
                                    db_name,
@@ -337,6 +400,7 @@ if __name__ == "__main__":
                                    parse_strategy_factory,
                                    crawling_strategy_factory,
                                    spider_service_class,
+                                   data_model,
                                    result_model_class,
                                    test_urls,
                                    rules):
@@ -348,7 +412,8 @@ if __name__ == "__main__":
                                                   spider_class=spider_class,
                                                   parse_strategy_factory=parse_strategy_factory,
                                                   crawling_strategy_factory=crawling_strategy_factory,
-                                                  result_db_model=result_model_class)
+                                                  data_model=data_model,
+                                                  db_model=result_model_class)
             await spider_service.crawl(test_urls, rules)
 
     cookie_text = """BIDUPSID=C2730507E1C86942858719FD87A61E58;
@@ -361,8 +426,7 @@ if __name__ == "__main__":
 
     headers = RequestHeader(
         accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
-        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-        )
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",)
     use_db = 'test'
     db_client = create_client(host='localhost',
                               username='admin',
@@ -373,7 +437,7 @@ if __name__ == "__main__":
         "http://www.baidu.com/s?tn=news&ie=utf-8"
     ]
     print(urls)
-    config = load_service_config("aqi_config")
+    config = load_service_config("baidu_news")
     debug(config)
 
     loop = asyncio.get_event_loop()
@@ -387,6 +451,7 @@ if __name__ == "__main__":
         parse_strategy_factory=ParserContextFactory,
         crawling_strategy_factory=CrawlerContextFactory,
         spider_service_class=BaiduNewsSpider,
+        data_model=News,
         result_model_class=NewsDBModel,
         test_urls=urls,
         rules=config

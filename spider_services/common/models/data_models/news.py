@@ -2,7 +2,6 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
-
 class News(BaseModel):
     """ Defines a news article
     
@@ -19,7 +18,7 @@ class News(BaseModel):
     title: Optional[str]
     source: Optional[str]
     date: Optional[str]
-    publishDate: Optional[str]
+    publishDate: Optional[datetime]
     link: Optional[str]
     popularity: Optional[int]
     summary: Optional[str]

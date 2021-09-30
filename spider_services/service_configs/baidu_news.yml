@@ -1,0 +1,50 @@
+keywords:
+  exclude: []
+  include:
+  - "\u6DF1\u5733\u75AB\u60C5"
+  - "\u5E7F\u5DDE\u75AB\u60C5"
+max_concurrency: 100
+max_depth: null
+max_pages: 5
+max_retry: 10
+max_size: null
+parsing_pipeline:
+- name: null
+  parse_rules:
+  - field_name: title
+    is_link: false
+    rule: //h3/a
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: link
+    is_link: true
+    rule: //h3/a
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: summary
+    is_link: false
+    rule: //span[contains(@class, 'c-font-normal') and contains(@class, 'c-color-text')]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: source
+    is_link: false
+    rule: //span[contains(@class, 'c-color-gray c-font-normal c-gap-right')]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  - field_name: publishDate
+    is_link: false
+    rule: //span[contains(@class, 'c-color-gray2') and contains(@class, 'c-font-normal')]
+    rule_type: !!python/object/apply:spider.app.enums.enum_classes.ParseRuleType
+    - xpath
+  parser: !!python/object/apply:spider.app.enums.enum_classes.Parser
+  - list_item_parser
+- name: null
+  parse_rules: []
+  parser: !!python/object/apply:spider.app.enums.enum_classes.Parser
+  - general_news_parser
+request_params: {}
+time_range:
+  date_after: null
+  date_before: null
+  past_days: 5
+url_patterns: null
