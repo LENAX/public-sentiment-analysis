@@ -102,6 +102,7 @@ class ScrapeRules(BaseModel):
     max_retry: Optional[int] = 1
     max_concurrency: Optional[int] = 50
     mode: Optional[str]
+    theme_id: Optional[str] # used to distinguish combinations of area_keywords and theme_keywords
     request_params: Optional[dict] = {}
 
 
@@ -150,6 +151,40 @@ class MigrationRankSpiderArgs(BaseModel):
     mode: Literal['update', 'history'] = 'update'
     start_date: Optional[str] = '2020-01-01'
     end_date: Optional[str] = datetime.now().strftime("%Y-%m-%d")
+    
+
+class BaiduNewsSpiderArgs(BaseModel):
+    url: str = "http://www.baidu.com/s?tn=news&ie=utf-8"
+    past_days: int = 30
+    theme_id: str
+    area_keywords: List[str]
+    theme_keywords: List[str]
+    
+    @validator("url", pre=True)
+    def validate_url(cls, value):
+        assert type(value) is str and len(value) > 0
+        return value
+    
+    @validator("past_days", pre=True)
+    def validate_past_days(cls, value):
+        assert type(value) is int and value >= 0
+        return value
+    
+    @validator("theme_id", pre=True)
+    def validate_theme_id(cls, value):
+        assert type(value) is str and len(value) > 0
+        return value
+    
+    @validator("area_keywords", pre=True)
+    def validate_area_keywords(cls, value):
+        assert len(value) > 0
+        return value
+    
+    @validator("theme_keywords", pre=True)
+    def validate_theme_keywords(cls, value):
+        assert len(value) > 0
+        return value
+    
 
 class ResultQuery(BaseModel):
     """ Holds parameters for a result query

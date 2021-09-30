@@ -25,6 +25,10 @@ local_development:
     password: root
     port: 27017
     db_name: test
+  rpc:
+    article_summary_service: http://localhost:9000/content-abstract
+    article_popularity_service: http://localhost:9000/article-popularity
+    article_classification_service: http://localhost:9000/article-category
 development:
   <<: *base
 test:

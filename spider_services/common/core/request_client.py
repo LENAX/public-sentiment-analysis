@@ -36,6 +36,10 @@ class RequestClient(BaseRequestClient):
     @contextmanager
     def get(self, url: str, params: dict = {}) -> ResponseContext:
         yield self._client.get(url=url, params=params)
+        
+    @contextmanager
+    def post(self, url: str, params: dict = {}) -> ResponseContext:
+        yield self._client.post(url=url, params=params)
 
     async def __aenter__(self) -> "ClientSession":
         return self._client

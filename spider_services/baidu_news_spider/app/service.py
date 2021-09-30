@@ -1,15 +1,16 @@
 import logging
 import re
 import traceback
-from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta
-from inspect import trace
 from logging import Logger
 from multiprocessing import cpu_count
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import pytz
 from dateutil import parser as dt_parser
+from spider_services.baidu_news_spider.app.rpc import (
+    ArticleClassificationService, ArticlePopularityService,
+    ArticleSummaryService)
 from spider_services.common.models.data_models.parser_models import ParseResult
 
 from ...common.core import (BaseRequestClient, BaseSpider, ParserContext,
@@ -28,7 +29,7 @@ spider_service_logger = logging.getLogger(__name__)
 spider_service_logger.setLevel(logging.DEBUG)
 
 
-class BaiduNewsSpider(BaseSpiderService):
+class BaiduNewsSpiderService(BaseSpiderService):
     """ A spider for crawling baidu news
     
     You can crawl search engine pages with this service if the result page has a paging parameter.
@@ -43,10 +44,11 @@ class BaiduNewsSpider(BaseSpiderService):
                  parse_strategy_factory: ParserContextFactory,
                  data_model: News,
                  db_model: NewsDBModel,
+                 article_summary_service: ArticleSummaryService,
+                 article_popularity_service:  ArticlePopularityService,
+                 article_classification_service: ArticleClassificationService,
                  datetime_parser: Callable = dt_parser,
                  throttled_fetch: Callable = throttled,
-                 process_pool_executor: ProcessPoolExecutor = ProcessPoolExecutor,
-                 n_cpu: int = cpu_count(),
                  logger: Logger = spider_service_logger,
                  **kwargs) -> None:
         self._request_client = request_client
@@ -54,10 +56,11 @@ class BaiduNewsSpider(BaseSpiderService):
         self._parse_strategy_factory = parse_strategy_factory
         self._data_model = data_model
         self._db_model = db_model
+        self._article_summary_service = article_summary_service
+        self._article_popularity_service = article_popularity_service
+        self._article_classification_service = article_classification_service
         self._datetime_parser = datetime_parser
         self._throttled_fetch = throttled_fetch
-        self._process_pool_executor = process_pool_executor
-        self._n_cpu = n_cpu
         self._logger = logger
         self._create_time_string_extractors()
 
@@ -207,9 +210,22 @@ class BaiduNewsSpider(BaseSpiderService):
             self._logger.error(e)
             return []
     
-    def _fill_news_contents(self, news_dict: Dict[str, News], content_pages: List[Tuple[str, str]],
-                    content_parser: ParserContext, 
-                    parse_rules: List[ParseRule]) -> None:        
+    def _get_keyword_from_url(self, url: str):
+        if type(url) is not str or len(url) == 0:
+            return ""
+        
+        query_args = url.split("&")
+        if len(query_args) < 2:
+            return ""
+        
+        keyword_arg = [arg for arg in query_args if arg.startswith('word=')]
+        if len(keyword_arg) == 0:
+            return ""
+        
+        return keyword_arg[5:]
+    
+    async def _fill_news_contents(self, news_dict: Dict[str, News], content_pages: List[Tuple[str, str]],
+                                  content_parser: ParserContext,  parse_rules: List[ParseRule], theme_id: int) -> None:        
         try:
             self._logger.info(f"Start parsing news pages")
 
@@ -234,11 +250,24 @@ class BaiduNewsSpider(BaseSpiderService):
                 news.date = content_dict['publish_time'] if 'publish_time' in content_dict else news.publishDate.strftime("%Y-%m-%d")
                 news.publishDate = self._datetime_parser.parse(content_dict['publish_time']) if 'publish_time' in content_dict else news.publishDate
                 news.content = content_dict['content'] if 'content' in content_dict else ''
-                news.popularity = 1
+                
+                keyword = self._get_keyword_from_url(content_url)
+                popularity = await self._article_summary_service.get_summary(theme_id, keyword, news.title, news.content)
+                news.popularity = popularity.hot_value if popularity is not None else news.popularity
+                
+                summary = await self._article_summary_service.get_summary(theme_id, keyword, news.title, news.content)
+                news.summary = summary.abstract_result if summary is not None else news.summary
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
             raise e
+        
+    async def _apply_news_category_filter(self, news_dict: Dict[str, News], theme_id: int):
+        article_classification_results = await self._throttled_fetch(100, (
+            self._article_classification_service.is_medical_article(
+                theme_id, news.link, self._get_keyword_from_url(news.link), news.title, news.content)
+            for news in news_dict.values()
+        ))
         
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Crawl search results within given rules like time range, keywords, and etc.
@@ -257,7 +286,8 @@ class BaiduNewsSpider(BaseSpiderService):
                     type(rules.max_pages) is int and rules.max_pages > 0 and
                     rules.keywords is not None and
                     len(rules.keywords.include) > 0 and rules.parsing_pipeline is not None and 
-                    len(rules.parsing_pipeline) >= 2)
+                    len(rules.parsing_pipeline) >= 2 and rules.theme_id is not None and
+                    len(rules.theme_id) > 0)
 
             self._logger.info("Parameters are validated. Prepare crawling...")
             self._logger.info("Start crawling news...")
@@ -306,16 +336,20 @@ class BaiduNewsSpider(BaseSpiderService):
             self._logger.info(f"Start parsing news pages")
             content_parser = self._parse_strategy_factory.create(
                 rules.parsing_pipeline[1].parser)
-            self._fill_news_contents(news_dict, content_pages,
-                                     content_parser, rules.parsing_pipeline[1].parse_rules)
+            await self._fill_news_contents(news_dict, content_pages, content_parser, 
+                                           rules.parsing_pipeline[1].parse_rules, rules.theme_id)
             
             filtered_news = news_dict.values()
             if (len(parsed_search_result) > 0 and rules.time_range):
-                self._logger.info(f"Applying time filters")
+                self._logger.info(f"Applying time filters again using articles' publish times.")
                 filtered_news = self._apply_date_range_filter(
                     news_dict.values(), rules.time_range)
             
-            results = [self._db_model.parse_obj(news) for news in filtered_news]
+            results = []
+            for news in filtered_news:
+                new_db_object = self._db_model.parse_obj(news)
+                new_db_object.theme_id = rules.theme_id
+                results.append(new_db_object)
 
             # 6. finally save results to db
             if len(results) > 0:
@@ -450,7 +484,7 @@ if __name__ == "__main__":
         spider_class=Spider,
         parse_strategy_factory=ParserContextFactory,
         crawling_strategy_factory=CrawlerContextFactory,
-        spider_service_class=BaiduNewsSpider,
+        spider_service_class=BaiduNewsSpiderService,
         data_model=News,
         result_model_class=NewsDBModel,
         test_urls=urls,
