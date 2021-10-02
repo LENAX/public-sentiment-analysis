@@ -89,11 +89,12 @@ class BaiduNewsSpiderService(BaseSpiderService):
                     now.year,
                     int(re.findall('\d+', time_str)[0]),
                 int(re.findall('\d+', time_str)[1])),
-            re.compile('\d{1,2}年\d{1,2}月\d{1,2}日'):
-                lambda now, time_str: datetime(*(re.findall('\d+', time_str)))
+            re.compile('\d{2,4}年\d{1,2}月\d{1,2}日'):
+                lambda now, time_str: datetime(
+                    *(int(time_value) for time_value in re.findall('\d+', time_str)))
         }
 
-    def _standardize_datetime(self, time_str):
+    def _standardize_datetime(self, time_str) -> Optional[datetime]:
         """ Convert non standard format time string to standard datetime format
         
         Non standard cn time strings:
@@ -108,7 +109,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
         converted = datetime(today.year, today.month, today.day)
 
         if len(time_str) == 0:
-            return converted
+            return None
 
         for pattern in self._cn_time_string_extractors:
             if pattern.match(time_str):
@@ -116,7 +117,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
                     today, time_str)
                 return converted
 
-        return converted
+        return None
     
     def _build_news_query_urls(self, base_url: str, keywords: List[str], max_page: int, past_days: int = 30) -> List[str]:
         search_urls = [f"{base_url}&rtt=4&bsst=1&cl=2&wd={kw}&rn=50&pn={page_number}&lm=30"
@@ -137,8 +138,11 @@ class BaiduNewsSpiderService(BaseSpiderService):
             for result in search_results:
                 result_attributes = result.value
                 if 'publishDate' in result_attributes:
-                    result_attributes['publishDate'].value = self._standardize_datetime(
-                        result_attributes['publishDate'].value)
+                    self._logger.info(f"before parse date: {result_attributes['publishDate'].value}")
+                    parsed_datetime = self._standardize_datetime(result_attributes['publishDate'].value)
+                    last_month = datetime.now() - timedelta(days=31) # treat the article as outdated
+                    result_attributes['publishDate'].value = parsed_datetime if parsed_datetime is not None else last_month
+                    self._logger.info(f"News date: {result_attributes['publishDate'].value}")
 
             parsed_search_result.extend(search_results)
 
@@ -243,8 +247,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
                     news_dict.pop(content_url, None)
                     continue
                 
-                content_dict = {
-                    result.name: result.value for result in parsed_contents}
+                content_dict = {result.name: result.value for result in parsed_contents}
                 
                 if content_url not in news_dict:
                     self._logger.warn(f"Skipped news from {content_url} as it returns no content...")
@@ -288,8 +291,8 @@ class BaiduNewsSpiderService(BaseSpiderService):
             raise e
         
     def _apply_news_category_filter(self, news_dict: Dict[str, News]):
-        for key, news in news_dict.items():
-            if not news.is_medical_article:
+        for key in list(news_dict.keys()):
+            if not news_dict[key].is_medical_article:
                 news_dict.pop(key, None)
                 
         return news_dict

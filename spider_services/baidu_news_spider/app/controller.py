@@ -63,6 +63,7 @@ async def get_baidu_news(args: BaiduNewsSpiderArgs,
                                   for keywords in keyword_combination]
         
         rules.theme_id = args.theme_id
+        rules.time_range.past_days = args.past_days
 
         spider_logger.info(f"Start crawling {args.url} with keywords {rules.keywords.include}...")
         background_tasks.add_task(spider_service.crawl, [args.url], rules)
