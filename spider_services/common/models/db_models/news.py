@@ -1,3 +1,4 @@
+from typing import Optional
 from .db_model import DBModel
 from ..data_models import News
 from datetime import datetime
@@ -13,4 +14,6 @@ class NewsDBModel(DBModel, News):
     news_id: UUID = Field(
         default_factory=lambda: uuid5(
             NAMESPACE_OID, f"News_Object_{datetime.now().timestamp()}"))
-    themeId: str
+    themeId: Optional[int]
+    
+    

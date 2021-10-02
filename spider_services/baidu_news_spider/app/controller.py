@@ -25,8 +25,8 @@ def create_logger():
     return spider_logger
 
 
-def load_config(config_name):
-    return lambda _: load_service_config(config_name)
+def load_config():
+    return load_service_config('baidu_news')
 
 
 spider_controller = APIRouter()
@@ -44,11 +44,25 @@ async def get_baidu_news(args: BaiduNewsSpiderArgs,
                          background_tasks: BackgroundTasks,
                          spider_service: BaiduNewsSpiderService = Depends(Provide[
                              Application.services.baidu_news_spider_service]),
-                         rules: ScrapeRules = Depends(load_config('baidu_news')),
-                         product: Callable = product,
+                         rules: ScrapeRules = Depends(load_config),
                          spider_logger: Logger = Depends(create_logger)):
     try:
-        rules.keywords.include = product(args.area_keywords, args.theme_keywords)
+        keyword_combination = []
+        if len(args.area_keywords) > 0:
+            keyword_combination = product([f"\"{kw}\"" for kw in args.area_keywords],
+                                          [kw.keyword for kw in args.theme_keywords],
+                                          [f"\"{kw}\"" for kw in args.epidemic_keywords])
+            rules.keywords.must_include = args.area_keywords + args.epidemic_keywords
+        else:
+            keyword_combination = product([kw.keyword for kw in args.theme_keywords],
+                                          [f"\"{kw}\"" for kw in args.epidemic_keywords])
+            rules.keywords.must_include = args.epidemic_keywords
+            
+        # "%2B" is url encoded form of + sign
+        rules.keywords.include = ["%2B".join(keywords)
+                                  for keywords in keyword_combination]
+        
+        rules.theme_id = args.theme_id
 
         spider_logger.info(f"Start crawling {args.url} with keywords {rules.keywords.include}...")
         background_tasks.add_task(spider_service.crawl, [args.url], rules)

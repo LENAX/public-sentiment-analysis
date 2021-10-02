@@ -57,6 +57,12 @@
             "module": "spider_services.common.core.parser"
         },
         {
+            "name": "Baidu News API",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.baidu_news_spider.app.main"
+        },
+        {
             "name": "Weather Report Spider",
             "type": "python",
             "request": "launch",

@@ -9,6 +9,7 @@ class KeywordRules(BaseModel):
     """ Keywords to include or exclude """
     include: List[str] = []
     exclude: List[str] = []
+    must_include: List[str] = []
 
 
 class SizeLimit(BaseModel):
@@ -153,37 +154,42 @@ class MigrationRankSpiderArgs(BaseModel):
     end_date: Optional[str] = datetime.now().strftime("%Y-%m-%d")
     
 
+class Keyword(BaseModel):
+    keywordType: int
+    keyword: str
+
 class BaiduNewsSpiderArgs(BaseModel):
     url: str = "http://www.baidu.com/s?tn=news&ie=utf-8"
     past_days: int = 30
-    theme_id: str
+    theme_id: int
     area_keywords: List[str]
-    theme_keywords: List[str]
+    theme_keywords: List[Keyword]
+    epidemic_keywords: List[str]
     
-    @validator("url", pre=True)
-    def validate_url(cls, value):
-        assert type(value) is str and len(value) > 0
-        return value
+    # @validator("url", pre=True)
+    # def validate_url(cls, value):
+    #     assert type(value) is str and len(value) > 0
+    #     return value
     
-    @validator("past_days", pre=True)
-    def validate_past_days(cls, value):
-        assert type(value) is int and value >= 0
-        return value
+    # @validator("past_days", pre=True)
+    # def validate_past_days(cls, value):
+    #     assert type(value) is int and value >= 0
+    #     return value
     
-    @validator("theme_id", pre=True)
-    def validate_theme_id(cls, value):
-        assert type(value) is str and len(value) > 0
-        return value
+    # @validator("theme_id", pre=True)
+    # def validate_theme_id(cls, value):
+    #     assert type(value) is str and len(value) > 0
+    #     return value
     
-    @validator("area_keywords", pre=True)
-    def validate_area_keywords(cls, value):
-        assert len(value) > 0
-        return value
+    # @validator("area_keywords", pre=True)
+    # def validate_area_keywords(cls, value):
+    #     assert len(value) > 0
+    #     return value
     
-    @validator("theme_keywords", pre=True)
-    def validate_theme_keywords(cls, value):
-        assert len(value) > 0
-        return value
+    # @validator("theme_keywords", pre=True)
+    # def validate_theme_keywords(cls, value):
+    #     assert len(value) > 0
+    #     return value
     
 
 class ResultQuery(BaseModel):

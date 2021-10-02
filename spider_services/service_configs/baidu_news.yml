@@ -1,13 +1,13 @@
 keywords:
   exclude: []
   include:
-  - "\u6DF1\u5733\u75AB\u60C5"
-  - "\u5E7F\u5DDE\u75AB\u60C5"
-max_concurrency: 100
+  - "流感"
+max_concurrency: 10
 max_depth: null
-max_pages: 5
+max_pages: 2
 max_retry: 10
 max_size: null
+theme_id: 123
 parsing_pipeline:
 - name: null
   parse_rules:
@@ -46,5 +46,5 @@ request_params: {}
 time_range:
   date_after: null
   date_before: null
-  past_days: 5
+  past_days: 30
 url_patterns: null

@@ -1,5 +1,12 @@
-from spider_services.baidu_news_spider.app.rpc.models import ArticleSummary, ArticlePopularity
+from ai_services.mock_article_service.app.models.response_models import \
+    ArticleCategory
 from dependency_injector import containers, providers
+from spider_services.baidu_news_spider.app.rpc import (
+    ArticleClassificationService, ArticlePopularityService,
+    ArticleSummaryService)
+from spider_services.baidu_news_spider.app.rpc.models import (
+    ArticlePopularity, ArticleSummary)
+from spider_services.common.core.parser import ParserContextFactory
 from spider_services.common.models.data_models.news import News
 from spider_services.common.models.db_models.news import NewsDBModel
 
@@ -54,20 +61,24 @@ class RPCServiceContainer(containers.DeclarativeContainer):
     resources = providers.DependenciesContainer()
     
     article_summary_service = providers.Singleton(
+        ArticleSummaryService,
         remote_service_endpoint=config.article_summary_service,
         request_client=resources.http_request_client,
         response_model=ArticleSummary
     )
     
     article_popularity_service = providers.Singleton(
+        ArticlePopularityService,
         remote_service_endpoint=config.article_popularity_service,
         request_client=resources.http_request_client,
         response_model=ArticlePopularity
     )
     
     article_classification_service = providers.Singleton(
+        ArticleClassificationService,
         remote_service_endpoint=config.article_classification_service,
-        request_client=resources.http_request_client
+        request_client=resources.http_request_client,
+        response_model=ArticleCategory
     )
 
 class ServiceContainer(containers.DeclarativeContainer):
@@ -79,8 +90,12 @@ class ServiceContainer(containers.DeclarativeContainer):
         BaiduNewsSpiderService,
         request_client=resources.http_request_client,
         spider_class=Spider,
-        result_db_model=News,
-        result_data_model=NewsDBModel
+        parse_strategy_factory=ParserContextFactory,
+        data_model=News,
+        db_model=NewsDBModel,
+        article_classification_service=rpc_services.article_classification_service,
+        article_popularity_service=rpc_services.article_popularity_service,
+        article_summary_service=rpc_services.article_summary_service,
     )
 
 
@@ -109,4 +124,5 @@ class Application(containers.DeclarativeContainer):
     services = providers.Container(
         ServiceContainer,
         resources=resources,
-        config=config)
+        config=config,
+        rpc_services=rpc_services)

@@ -1,13 +1,15 @@
-import uvicorn
+import logging
 import time
+
+import uvicorn
 from fastapi import FastAPI, Request
+
 from ...common.models.db_models import bind_db_to_all_models
 from ...config import config
+from . import controller
 from .container import Application
 
-import logging
-
-logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%dT%H:%M:%S%z")
 server_logger = logging.getLogger(__name__)
 server_logger.setLevel(logging.DEBUG)
@@ -16,12 +18,14 @@ server_logger.setLevel(logging.DEBUG)
 def create_app() -> FastAPI:
     container = Application()
     container.config.from_dict(config)
+    container.wire(modules=[controller])
 
     db_client = container.resources.db_client()
     bind_db_to_all_models(db_client, config['db']['db_name'])
 
     app = FastAPI()
     app.container = container
+    app.include_router(controller.spider_controller)
 
     return app
 
@@ -62,4 +66,4 @@ if __name__ == "__main__":
     log_config = uvicorn.config.LOGGING_CONFIG
     log_config["formatters"]["access"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
     log_config["formatters"]["default"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
-    uvicorn.run(app, log_config=log_config)
+    uvicorn.run(app, log_config=log_config, port=5002)

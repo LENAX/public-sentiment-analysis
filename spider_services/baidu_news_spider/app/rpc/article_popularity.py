@@ -26,19 +26,21 @@ class ArticlePopularityService(RESTfulRPCService):
     async def get_popularity(self, theme_id: int, keyword: str, title: str, content:str) -> Optional[ArticlePopularity]:
         try:
             async with self._request_client.post(self._remote_service_endpoint, json={
-                    "theme_id": theme_id, "keyword": keyword, "title": title, "content": content}) as resp:
+                    "theme_id": theme_id, "key_word": keyword, "title": title, "content": content}) as resp:
                 resp_data = await resp.json()
                 
-                if resp_data and 'data' in resp_data and resp_data['data'] is not None and 'status' in resp_data['status'] == 200:
+                if (resp_data and 'data' in resp_data and
+                    resp_data['data'] is not None and
+                        'statusCode' in resp_data and resp_data['statusCode'] == 200):
                     article_popularity = self._response_model.parse_obj(resp_data['data'])
                     return article_popularity
                 else:
                     self._logger.error(
                         f"Failed to receive article popularity data from remote server! Response: {resp_data}")
-                    return None
+                    return self._response_model(sim_result=0, hot_value=0)
                 
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
-            raise e
+            return self._response_model(sim_result=0, hot_value=0)
 

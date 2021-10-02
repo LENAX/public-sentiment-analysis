@@ -7,6 +7,8 @@ from multiprocessing import cpu_count
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import pytz
+from ai_services.mock_article_service.app.models.response_models import (
+    ArticleCategory, ArticlePopularity, ArticleSummary)
 from dateutil import parser as dt_parser
 from spider_services.baidu_news_spider.app.rpc import (
     ArticleClassificationService, ArticlePopularityService,
@@ -44,9 +46,9 @@ class BaiduNewsSpiderService(BaseSpiderService):
                  parse_strategy_factory: ParserContextFactory,
                  data_model: News,
                  db_model: NewsDBModel,
-                 article_summary_service: ArticleSummaryService,
-                 article_popularity_service:  ArticlePopularityService,
                  article_classification_service: ArticleClassificationService,
+                 article_popularity_service: ArticlePopularityService,
+                 article_summary_service: ArticleSummaryService,
                  datetime_parser: Callable = dt_parser,
                  throttled_fetch: Callable = throttled,
                  logger: Logger = spider_service_logger,
@@ -56,9 +58,9 @@ class BaiduNewsSpiderService(BaseSpiderService):
         self._parse_strategy_factory = parse_strategy_factory
         self._data_model = data_model
         self._db_model = db_model
-        self._article_summary_service = article_summary_service
-        self._article_popularity_service = article_popularity_service
         self._article_classification_service = article_classification_service
+        self._article_popularity_service = article_popularity_service
+        self._article_summary_service = article_summary_service
         self._datetime_parser = datetime_parser
         self._throttled_fetch = throttled_fetch
         self._logger = logger
@@ -79,21 +81,16 @@ class BaiduNewsSpiderService(BaseSpiderService):
                 lambda now, time_str: now -
                 timedelta(days=int(re.search('\d+', time_str).group(0))),
             re.compile('昨天\d{1,2}:\d{1,2}'):
-                lambda now, time_str: datetime(
-                    now.year, now.month, now.day-1,
-                    int(re.findall('\d+', time_str)[0]),
-                    int(re.findall('\d+', time_str)[1])
-            ),
+                lambda now, time_str: (now - timedelta(days=1)).replace(
+                    hour=int(re.findall('\d+', time_str)[0]),
+                    minute=int(re.findall('\d+', time_str)[1])),
             re.compile('\d{1,2}月\d{1,2}日'):
                 lambda now, time_str: datetime(
                     now.year,
                     int(re.findall('\d+', time_str)[0]),
                 int(re.findall('\d+', time_str)[1])),
-
             re.compile('\d{1,2}年\d{1,2}月\d{1,2}日'):
-                lambda now, time_str: datetime(
-                    *(re.findall('\d+', time_str))
-            )
+                lambda now, time_str: datetime(*(re.findall('\d+', time_str)))
         }
 
     def _standardize_datetime(self, time_str):
@@ -121,10 +118,11 @@ class BaiduNewsSpiderService(BaseSpiderService):
 
         return converted
     
-    def _build_news_query_urls(self, base_url: str, keywords: List[str], max_page: int) -> List[str]:
-        search_urls = [f"{base_url}&word={kw}&pn={page_number}"
+    def _build_news_query_urls(self, base_url: str, keywords: List[str], max_page: int, past_days: int = 30) -> List[str]:
+        search_urls = [f"{base_url}&rtt=4&bsst=1&cl=2&wd={kw}&rn=50&pn={page_number}&lm=30"
                        for page_number in range(max_page)
                        for kw in keywords]
+        self._logger.info(search_urls)
         return search_urls
     
     def _fill_news_contents_blocks(self, news_query_pages: List[Tuple[str, str]], parser: ParserContext, parse_rules: List[ParseRule]):
@@ -218,7 +216,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
         if len(query_args) < 2:
             return ""
         
-        keyword_arg = [arg for arg in query_args if arg.startswith('word=')]
+        keyword_arg = [arg for arg in query_args if arg.startswith('wd=') or arg.startswith('word=')]
         if len(keyword_arg) == 0:
             return ""
         
@@ -234,40 +232,74 @@ class BaiduNewsSpiderService(BaseSpiderService):
                 content_url, content_page = page
                 if len(content_page) == 0:
                     self._logger.error(f"failed to fetch news from url: {content_url}")
-                    news_dict.pop(content_url)
+                    news_dict.pop(content_url, None)
                     continue
 
                 parsed_contents = content_parser.parse(content_page, parse_rules)
+                self._logger.info(f"parsing completed.")
                 
                 if all([len(data.value) == 0 for data in parsed_contents]):
                     self._logger.error(f"failed to parse content from url: {content_url}")
-                    news_dict.pop(content_url)
+                    news_dict.pop(content_url, None)
                     continue
                 
                 content_dict = {
                     result.name: result.value for result in parsed_contents}
-                news = news_dict[content_url]
+                news: News = news_dict[content_url]
                 news.date = content_dict['publish_time'] if 'publish_time' in content_dict else news.publishDate.strftime("%Y-%m-%d")
-                news.publishDate = self._datetime_parser.parse(content_dict['publish_time']) if 'publish_time' in content_dict else news.publishDate
-                news.content = content_dict['content'] if 'content' in content_dict else ''
                 
-                keyword = self._get_keyword_from_url(content_url)
-                popularity = await self._article_summary_service.get_summary(theme_id, keyword, news.title, news.content)
-                news.popularity = popularity.hot_value if popularity is not None else news.popularity
-                
-                summary = await self._article_summary_service.get_summary(theme_id, keyword, news.title, news.content)
-                news.summary = summary.abstract_result if summary is not None else news.summary
+                try:
+                    news.publishDate = self._datetime_parser.parse(content_dict['publish_time']) if 'publish_time' in content_dict and len(content_dict['publish_time']) > 0 else news.publishDate
+                except Exception as e:
+                    self._logger.error(f"Parse datetime failed.. Error: {e}")
+                    self._logger.info("Try to standardize datetime in Chinese...")
+                    news.publishDate = self._standardize_datetime(content_dict['publish_time'])
+                    
+                try:
+                    news.content = content_dict['content'] if 'content' in content_dict else ''
+                    
+                    keyword = self._get_keyword_from_url(content_url)
+                    
+                    summary, popularity, article_category = await self._throttled_fetch(3, [
+                        self._article_summary_service.get_summary(theme_id, keyword, news.title, news.content),
+                        self._article_popularity_service.get_popularity(theme_id, keyword, news.title, news.content),
+                        self._article_classification_service.is_medical_article(theme_id, keyword, news.title, news.content)
+                    ])
+                    
+                    self._logger.info(f'Summary: {summary}')
+                    self._logger.info(f'popularity: {popularity}')
+                    self._logger.info(f'is medical article: {article_category}')
+                    
+                    news.summary = summary.abstract_result
+                    news.popularity = popularity.hot_value
+                    news.is_medical_article = article_category.whether_medical_result
+                except Exception as e:
+                    traceback.print_exc()
+                    self._logger.error(e)
+                    
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
             raise e
         
-    async def _apply_news_category_filter(self, news_dict: Dict[str, News], theme_id: int):
-        article_classification_results = await self._throttled_fetch(100, (
-            self._article_classification_service.is_medical_article(
-                theme_id, news.link, self._get_keyword_from_url(news.link), news.title, news.content)
-            for news in news_dict.values()
-        ))
+    def _apply_news_category_filter(self, news_dict: Dict[str, News]):
+        for key, news in news_dict.items():
+            if not news.is_medical_article:
+                news_dict.pop(key, None)
+                
+        return news_dict
+    
+    def _apply_keywords_filter(self, news_dict: Dict[str, News], keywords: List[str]):
+        for key in list(news_dict.keys()):
+            keyword_included = False
+            for keyword in keywords:
+                if keyword in news_dict[key].content:
+                    keyword_included = True
+                    break
+            if len(keywords) > 0 and not keyword_included:
+                news_dict.pop(key)
+
+        return news_dict
         
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Crawl search results within given rules like time range, keywords, and etc.
@@ -286,15 +318,14 @@ class BaiduNewsSpiderService(BaseSpiderService):
                     type(rules.max_pages) is int and rules.max_pages > 0 and
                     rules.keywords is not None and
                     len(rules.keywords.include) > 0 and rules.parsing_pipeline is not None and 
-                    len(rules.parsing_pipeline) >= 2 and rules.theme_id is not None and
-                    len(rules.theme_id) > 0)
+                    len(rules.parsing_pipeline) >= 2 and type(rules.theme_id) is int)
 
             self._logger.info("Parameters are validated. Prepare crawling...")
             self._logger.info("Start crawling news...")
 
             # generate search page urls given keywords and page limit
             news_query_urls = self._build_news_query_urls(
-                urls[0], rules.keywords.include, rules.max_pages)
+                urls[0], rules.keywords.include, rules.max_pages, rules.time_range.past_days)
             spiders = self._spider_class.create_from_urls(news_query_urls, self._request_client)
 
             # concurrently fetch search results with a concurrency limit
@@ -339,17 +370,22 @@ class BaiduNewsSpiderService(BaseSpiderService):
             await self._fill_news_contents(news_dict, content_pages, content_parser, 
                                            rules.parsing_pipeline[1].parse_rules, rules.theme_id)
             
+            if len(rules.keywords.must_include) > 0:
+                news_dict = self._apply_keywords_filter(news_dict, rules.keywords.must_include)
+                
+            news_dict = self._apply_news_category_filter(news_dict)
+            
             filtered_news = news_dict.values()
             if (len(parsed_search_result) > 0 and rules.time_range):
-                self._logger.info(f"Applying time filters again using articles' publish times.")
+                self._logger.info(f"Applying time filters again using articles' publish time.")
                 filtered_news = self._apply_date_range_filter(
                     news_dict.values(), rules.time_range)
             
             results = []
             for news in filtered_news:
-                new_db_object = self._db_model.parse_obj(news)
-                new_db_object.theme_id = rules.theme_id
-                results.append(new_db_object)
+                news_db_object = self._db_model.parse_obj(news)
+                news_db_object.themeId = rules.theme_id
+                results.append(news_db_object)
 
             # 6. finally save results to db
             if len(results) > 0:
@@ -442,19 +478,28 @@ if __name__ == "__main__":
         result_model_class.db = db
 
         async with (await client_session_class(headers=headers, cookies=cookies)) as client_session:
+            article_classification_service = ArticleClassificationService(
+                'http://localhost:9000/article-category', client_session, ArticleCategory)
+            article_popularity_service = ArticlePopularityService(
+                'http://localhost:9000/article-popularity', client_session, ArticlePopularity
+            )
+            article_summary_service = ArticleSummaryService(
+                'http://localhost:9000/content-abstract', client_session, ArticleSummary
+            )
+
             spider_service = spider_service_class(request_client=client_session,
                                                   spider_class=spider_class,
                                                   parse_strategy_factory=parse_strategy_factory,
                                                   crawling_strategy_factory=crawling_strategy_factory,
                                                   data_model=data_model,
-                                                  db_model=result_model_class)
+                                                  db_model=result_model_class,
+                                                  article_classification_service=article_classification_service,
+                                                  article_popularity_service=article_popularity_service,
+                                                  article_summary_service=article_summary_service)
             await spider_service.crawl(test_urls, rules)
 
-    cookie_text = """BIDUPSID=C2730507E1C86942858719FD87A61E58;
-    PSTM=1591763607; BAIDUID=0145D8794827C0813A767D21ADED26B4:FG=1;
-    BDUSS=1jdUJiZUIxc01RfkFTTUtoTXZaSFl1SDlPdEgzeGJGVEhkTDZzZ2ZIZlJSM1ZmSVFBQUFBJCQAAAAAAAAAAAEAAACILlzpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANG6TV~Ruk1fek;
-    __yjs_duid=1_9e0d11606e81d46981d7148cc71a1d391618989521258; BD_UPN=123253; BCLID_BFESS=7682355843953324419; BDSFRCVID_BFESS=D74OJeC6263c72vemTUDrgjXg2-lavcTH6f3bGYZSp4POsT0C6gqEG0PEf8g0KubxY84ogKK3gOTH4PF_2uxOjjg8UtVJeC6EG0Ptf8g0f5;
-    H_BDCLCKID_SF_BFESS=tbu8_IIMtCI3enb6MJ0_-P4DePop3MRZ5mAqoDLbKK0KfR5z3hoMK4-qWMtHe47KbD7naIQDtbonofcbK5OmXnt7D--qKbo43bRTKRLy5KJvfJo9WjAMhP-UyNbMWh37JNRlMKoaMp78jR093JO4y4Ldj4oxJpOJ5JbMonLafD8KbD-wD5LBeP-O5UrjetJyaR3R_KbvWJ5TMC_CDP-bDRK8hJOP0njM2HbMoj6sK4QjShPCb6bDQpFl0p0JQUReQnRm_J3h3l02Vh5Ie-t2ynLV2buOtPRMW20e0h7mWIbmsxA45J7cM4IseboJLfT-0bc4KKJxbnLWeIJIjj6jK4JKDG8ft5OP;
+    cookie_text = """
+    BIDUPSID=C2730507E1C86942858719FD87A61E58; PSTM=1591763607; BDUSS=1jdUJiZUIxc01RfkFTTUtoTXZaSFl1SDlPdEgzeGJGVEhkTDZzZ2ZIZlJSM1ZmSVFBQUFBJCQAAAAAAAAAAAEAAACILlzpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANG6TV~Ruk1fek; __yjs_duid=1_9e0d11606e81d46981d7148cc71a1d391618989521258; BCLID_BFESS=7682355843953324419; BDSFRCVID_BFESS=D74OJeC6263c72vemTUDrgjXg2-lavcTH6f3bGYZSp4POsT0C6gqEG0PEf8g0KubxY84ogKK3gOTH4PF_2uxOjjg8UtVJeC6EG0Ptf8g0f5; H_BDCLCKID_SF_BFESS=tbu8_IIMtCI3enb6MJ0_-P4DePop3MRZ5mAqoDLbKK0KfR5z3hoMK4-qWMtHe47KbD7naIQDtbonofcbK5OmXnt7D--qKbo43bRTKRLy5KJvfJo9WjAMhP-UyNbMWh37JNRlMKoaMp78jR093JO4y4Ldj4oxJpOJ5JbMonLafD8KbD-wD5LBeP-O5UrjetJyaR3R_KbvWJ5TMC_CDP-bDRK8hJOP0njM2HbMoj6sK4QjShPCb6bDQpFl0p0JQUReQnRm_J3h3l02Vh5Ie-t2ynLV2buOtPRMW20e0h7mWIbmsxA45J7cM4IseboJLfT-0bc4KKJxbnLWeIJIjj6jK4JKDG8ft5OP; BDUSS_BFESS=1jdUJiZUIxc01RfkFTTUtoTXZaSFl1SDlPdEgzeGJGVEhkTDZzZ2ZIZlJSM1ZmSVFBQUFBJCQAAAAAAAAAAAEAAACILlzpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANG6TV~Ruk1fek; H_WISE_SIDS=110085_127969_128698_164869_170704_171235_173017_173293_174035_174449_174661_174665_175038_175407_175609_175665_175756_176157_176348_176398_176418_176589_176678_176766_176960_176995_177085_177094_177168_177283_177317_177393_177401_177412_177520_177522_177565_177632_177727_177735_177787_178076_178152_178205_178327_178384_178639; BAIDUID=F77119553DDCA3E3D26F14FA5EBF834C:FG=1; BAIDUID_BFESS=F77119553DDCA3E3D26F14FA5EBF834C:FG=1; delPer=0; PSINO=7; BAIDU_WISE_UID=wapp_1632905041500_81;  BDORZ=B490B5EBF6F3CD402E515D22BCDA1598; BA_HECTOR=208500852hak2l047b1gldcon0q; H_PS_PSSID=; MBDFEEDSG=df5a2f94d6addda8f42862cac42480f2_1633073378; ab_sr=1.0.1_NDQ3Yjc4OTliYTExNWM4YmVjZDY4YTQzZmIyZWJhM2VjZDg2MmU2OGVlMzMxZTUyMmU0ZDE1NGZiMjI0OWU2OWI5NGQwZGQ5ODIzMTZjOTA1MzI5NjdhZTM5NDNmMjIwZjhjZWRlNDQyYjVjNTUyZDc5MWI2MGU5MGM2OTAyNjcyMDRkMTQ1ODRlOTFmNjZiMTE5NDIyN2JjYWYzZDFkMw==
     """
     cookies = make_cookies(cookie_text)
 
@@ -473,7 +518,8 @@ if __name__ == "__main__":
     print(urls)
     config = load_service_config("baidu_news")
     debug(config)
-
+    
+    
     loop = asyncio.get_event_loop()
     loop.run_until_complete(test_spider_services(
         db_client=db_client,

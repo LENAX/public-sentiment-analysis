@@ -26,18 +26,21 @@ class ArticleSummaryService(RESTfulRPCService):
     async def get_summary(self, theme_id: int, keyword: str, title: str, content: str) -> Optional[ArticleSummary]:
         try:
             async with self._request_client.post(self._remote_service_endpoint, json={
-                    "theme_id": theme_id, "keyword": keyword, "title": title, "content": content}) as resp:
+                    "theme_id": theme_id, "key_word": keyword, "title": title, "content": content}) as resp:
                 resp_data = await resp.json()
 
-                if resp_data and 'data' in resp_data and resp_data['data'] is not None and 'status' in resp_data['status'] == 200:
+                if (resp_data and 'data' in resp_data and 
+                    resp_data['data'] is not None and 
+                    'statusCode' in resp_data and resp_data['statusCode'] == 200):
+                    self._logger.info(f"response: {resp_data}")
                     article_summary = self._response_model.parse_obj(resp_data['data'])
                     return article_summary
                 else:
                     self._logger.error(
                         f"Failed to receive article summary data from remote server! Response: {resp_data}")
-                    return None
+                    return self._response_model(abstract_result=content[:100])
 
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
-            raise e
+            return self._response_model(abstract_result=content[:100])

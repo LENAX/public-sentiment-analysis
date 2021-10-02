@@ -23,3 +23,4 @@ class News(BaseModel):
     popularity: Optional[int]
     summary: Optional[str]
     content: Optional[str]
+    is_medical_article: bool = False
