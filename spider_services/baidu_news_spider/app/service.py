@@ -245,6 +245,11 @@ class BaiduNewsSpiderService(BaseSpiderService):
                 
                 content_dict = {
                     result.name: result.value for result in parsed_contents}
+                
+                if content_url not in news_dict:
+                    self._logger.warn(f"Skipped news from {content_url} as it returns no content...")
+                    continue
+                
                 news: News = news_dict[content_url]
                 news.date = content_dict['publish_time'] if 'publish_time' in content_dict else news.publishDate.strftime("%Y-%m-%d")
                 
