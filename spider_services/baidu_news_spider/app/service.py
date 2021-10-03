@@ -120,7 +120,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
         return None
     
     def _build_news_query_urls(self, base_url: str, keywords: List[str], max_page: int, past_days: int = 30) -> List[str]:
-        search_urls = [f"{base_url}&rtt=4&bsst=1&cl=2&wd={kw}&rn=50&pn={page_number}&lm=30"
+        search_urls = [f"{base_url}&rtt=4&bsst=1&cl=2&wd={kw}&rn=50&pn={page_number}&lm={past_days}"
                        for page_number in range(max_page)
                        for kw in keywords]
         self._logger.info(search_urls)
@@ -138,11 +138,9 @@ class BaiduNewsSpiderService(BaseSpiderService):
             for result in search_results:
                 result_attributes = result.value
                 if 'publishDate' in result_attributes:
-                    self._logger.info(f"before parse date: {result_attributes['publishDate'].value}")
                     parsed_datetime = self._standardize_datetime(result_attributes['publishDate'].value)
                     last_month = datetime.now() - timedelta(days=31) # treat the article as outdated
                     result_attributes['publishDate'].value = parsed_datetime if parsed_datetime is not None else last_month
-                    self._logger.info(f"News date: {result_attributes['publishDate'].value}")
 
             parsed_search_result.extend(search_results)
 
@@ -267,6 +265,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
                     news.content = content_dict['content'] if 'content' in content_dict else ''
                     
                     keyword = self._get_keyword_from_url(content_url)
+                    news.keyword = keyword
                     
                     summary, popularity, article_category = await self._throttled_fetch(3, [
                         self._article_summary_service.get_summary(theme_id, keyword, news.title, news.content),

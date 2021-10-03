@@ -1,3 +1,4 @@
+from typing import List
 from typing_extensions import Literal
 from pydantic import BaseModel
 
@@ -12,3 +13,12 @@ class ArticlePopularity(BaseModel):
 
 class ArticleCategory(BaseModel):
     whether_medical_result: Literal[1,0]
+
+
+class WeightedWord(BaseModel):
+    word: str
+    weight: float
+
+
+class WordCloud(BaseModel):
+    word_cloud: List[WeightedWord]

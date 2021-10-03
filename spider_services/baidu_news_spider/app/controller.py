@@ -47,6 +47,11 @@ async def get_baidu_news(args: BaiduNewsSpiderArgs,
                          rules: ScrapeRules = Depends(load_config),
                          spider_logger: Logger = Depends(create_logger)):
     try:
+        if len(args.theme_keywords) == 0 or len(args.epidemic_keywords) == 0:
+            return Response(message="theme_keywords and epidemic_keywords are required",
+                            status="failed",
+                            statusCode=412)
+        
         keyword_combination = []
         if len(args.area_keywords) > 0:
             keyword_combination = product([f"\"{kw}\"" for kw in args.area_keywords],
@@ -59,8 +64,7 @@ async def get_baidu_news(args: BaiduNewsSpiderArgs,
             rules.keywords.must_include = args.epidemic_keywords
             
         # "%2B" is url encoded form of + sign
-        rules.keywords.include = ["%2B".join(keywords)
-                                  for keywords in keyword_combination]
+        rules.keywords.include = ["%2B".join(keywords) for keywords in keyword_combination]
         
         rules.theme_id = args.theme_id
         rules.time_range.past_days = args.past_days

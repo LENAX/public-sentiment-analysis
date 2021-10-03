@@ -10,7 +10,7 @@ from .container import Application
 
 import logging
 
-logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%dT%H:%M:%S%z")
 server_logger = logging.getLogger(__name__)
 server_logger.setLevel(logging.DEBUG)
@@ -61,11 +61,11 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/")
 async def welcome():
-    return {"message": "I am a notification server!"}
+    return {"message": "I am a news monitor service!"}
 
 
 if __name__ == "__main__":
     log_config = uvicorn.config.LOGGING_CONFIG
-    log_config["formatters"]["access"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
-    log_config["formatters"]["default"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
+    log_config["formatters"]["access"]["fmt"] = "%(asctime)s | %(levelname)s | %(funcName)s | %(message)s"
+    log_config["formatters"]["default"]["fmt"] = "%(asctime)s | %(levelname)s | %(funcName)s | %(message)s"
     uvicorn.run(app, log_config=log_config)

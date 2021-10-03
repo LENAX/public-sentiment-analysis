@@ -2,11 +2,14 @@ import logging
 import time
 
 import uvicorn
+import string
+import random
+import numpy as np
 from ai_services.mock_article_service.app.models.base import Response
 from ai_services.mock_article_service.app.models.request_models import \
-    ArticleServiceArgs
+    ArticleServiceArgs, WordCloudRequestArgs
 from ai_services.mock_article_service.app.models.response_models import (
-    ArticleCategory, ArticlePopularity, ArticleSummary)
+    ArticleCategory, ArticlePopularity, ArticleSummary, WeightedWord, WordCloud)
 from fastapi import FastAPI, Request
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s |%(message)s",
@@ -66,6 +69,19 @@ def generate_popularity(args: ArticleServiceArgs):
 @app.post("/article-category", response_model=Response[ArticleCategory])
 def generate_category(args: ArticleServiceArgs):
     return Response(data=ArticleCategory(whether_medical_result=1), statusCode=200, status="success", message="ok")
+
+
+@app.post("/wordcloud", response_model=Response[WordCloud])
+def generate_wordcloud(args: WordCloudRequestArgs):
+    random_words = [''.join(random.choices(
+        string.ascii_lowercase + string.digits, k=5)) for i in range(500)]
+
+    data = [WeightedWord.parse_obj({
+            "word": random_words[np.random.randint(0, 40)],
+            "weight": np.random.randn()})
+            for i in range(40)]
+    return Response(data=WordCloud(word_cloud=data), statusCode=200, status="success", message="ok")
+
 
 
 if __name__ == "__main__":

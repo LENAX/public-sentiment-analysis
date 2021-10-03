@@ -42,20 +42,6 @@ async def startup_event():
     logger.addHandler(handler)
 
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    server_logger.info(f"start request path={request.url.path}")
-    start_time = time.time()
-
-    response = await call_next(request)
-
-    process_time = (time.time() - start_time) * 1000
-    formatted_process_time = '{0:.2f}'.format(process_time)
-    server_logger.info(
-        f"completed_in={formatted_process_time}ms status_code={response.status_code}")
-
-    return response
-
 
 @app.get("/")
 async def welcome():
