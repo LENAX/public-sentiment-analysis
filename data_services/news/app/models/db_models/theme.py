@@ -19,4 +19,4 @@ class ThemeDBModel(Theme, DBModel):
 
     theme_id: UUID = Field(
         default_factory=lambda: uuid5(NAMESPACE_OID, f"Theme_Object_{datetime.now().timestamp()}"))
-    themeId: Optional[int]
+    

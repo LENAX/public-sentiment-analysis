@@ -1,4 +1,6 @@
 import asyncio
+from data_services.news.app.rpc.models.word_cloud_args import WordCloudRequestArgs
+from data_services.news.app.rpc.request_client.request_client import RequestClient
 from data_services.news.app.rpc.word_cloud_service import WordCloudGenerationService
 import logging
 import traceback
@@ -38,8 +40,8 @@ class WordCloudService:
             past_week = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
             past_month = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             weekly_news, monthly_news = await self._gather(*[
-                self._news_service.get_many({'theme_id': theme_id, 'date': {'$gte': past_week}}),
-                self._news_service.get_many({'theme_id': theme_id, 'date': {'$gte': past_month}}),
+                self._news_service.get_many({'themeId': theme_id, 'date': {'$gte': past_week}}),
+                self._news_service.get_many({'themeId': theme_id, 'date': {'$gte': past_month}}),
             ])
             
             if not all([type(weekly_news) is list,
@@ -96,7 +98,11 @@ if __name__ == "__main__":
 
     from devtools import debug
 
-    from ..db import create_client
+    from ..db.client import create_client
+    
+    from ..models.data_models import News, WordCloud
+    from ..models.db_models.news import NewsDBModel
+    from ..rpc.models.word_cloud import WordCloud as WordCloudResponse
 
     async def main():
         db_client = create_client(host='localhost',
@@ -104,14 +110,24 @@ if __name__ == "__main__":
                                   password='root',
                                   port=27017,
                                   db_name='test')
-        MigrationIndexDBModel.db = db_client['test']
-        migration_index_report_service = MigrationIndexReportService(
-            data_model=MigrationIndex, db_model=MigrationIndexDBModel)
+        NewsDBModel.db = db_client['test']
+        async with (await RequestClient()) as client_session:
+            news_service = NewsService(data_model=News, db_model=NewsDBModel)
+            word_cloud_generation_service = WordCloudGenerationService(
+                remote_service_endpoint='http://localhost:9000/wordcloud',
+                request_client=client_session,
+                request_model=WordCloudRequestArgs,
+                response_model=WordCloudResponse,
+                word_cloud_model=WordCloud
+            )
 
-        migration_indexes = await migration_index_report_service.get_many({
-            'areaCode': '130100', 'date': {"$gte": '20210701'}}, page_size=30, page_number=1)
+            word_cloud_service = WordCloudService(data_model=NewsWordCloud,
+                                                  news_service=news_service,
+                                                  word_cloud_generation_service=word_cloud_generation_service)
 
-        debug(migration_indexes)
+            word_cloud = await word_cloud_service.compute(theme_id=0)
+
+            debug(word_cloud)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())

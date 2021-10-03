@@ -25,3 +25,4 @@ class News(BaseModel):
     content: Optional[str]
     keyword: Optional[str]
     is_medical_article: bool = False
+    themeId: Optional[int]

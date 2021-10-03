@@ -38,9 +38,7 @@ class NewsSpiderService(RESTfulRPCService):
                                                  json=request_args.dict()) as resp:
                 resp_data = await resp.json()
 
-                if (resp_data and 'data' in resp_data and 
-                    resp_data['data'] is not None and 
-                    'statusCode' in resp_data and resp_data['statusCode'] == 200):
+                if ('statusCode' in resp_data and resp_data['statusCode'] == 200):
                     self._logger.info(f"response: {resp_data}")
                     return True
                 else:

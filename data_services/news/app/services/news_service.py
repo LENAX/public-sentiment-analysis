@@ -65,7 +65,7 @@ class NewsService(BaseAsyncCRUDService):
 if __name__ == "__main__":
     import asyncio
     from devtools import debug
-    from ..db import create_client
+    from ..db.client import create_client
 
     async def main():
         db_client = create_client(host='localhost',
@@ -73,14 +73,12 @@ if __name__ == "__main__":
                                   password='root',
                                   port=27017,
                                   db_name='test')
-        MigrationIndexDBModel.db = db_client['test']
-        migration_index_report_service = MigrationIndexReportService(
-            data_model=MigrationIndex, db_model=MigrationIndexDBModel)
+        NewsDBModel.db = db_client['test']
+        news_service = NewsService(data_model=News, db_model=NewsDBModel)
 
-        migration_indexes = await migration_index_report_service.get_many({
-            'areaCode': '130100', 'date': {"$gte": '20210701'}}, page_size=30, page_number=1)
+        news_list = await news_service.get_many({'themeId': 0}, page_size=30, page_number=0)
 
-        debug(migration_indexes)
+        debug(news_list)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())

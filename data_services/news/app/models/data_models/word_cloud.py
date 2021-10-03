@@ -7,6 +7,14 @@ class WordCloud(BaseModel):
 
     
 class NewsWordCloud(BaseModel):
+    """NewsWordCloud
+
+    Fields:
+        themeId: Optional[int]
+        createDt: Optional[str]
+        wordCloudPastWeek: Optional[List[WordCloud]]
+        wordCloudPastMonth: Optional[List[WordCloud]]
+    """
     themeId: Optional[int]
     createDt: Optional[str]
     wordCloudPastWeek: Optional[List[WordCloud]]

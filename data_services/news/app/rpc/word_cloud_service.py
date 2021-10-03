@@ -48,12 +48,12 @@ class WordCloudGenerationService(RESTfulRPCService):
 
                 if (resp_data and 'data' in resp_data and
                     resp_data['data'] is not None and
-                    'word_clouds' in resp_data['data'] and
-                    type(resp_data['data']['word_clouds']) is list and
-                    len(resp_data['data']['word_clouds']) > 0 and 
+                    'word_cloud' in resp_data['data'] and
+                    type(resp_data['data']['word_cloud']) is list and
+                    len(resp_data['data']['word_cloud']) > 0 and 
                     'statusCode' in resp_data and
                     resp_data['statusCode'] == 200):
-                    return resp_data['data']['word_clouds']
+                    return resp_data['data']['word_cloud']
                 else:
                     self._logger.error(
                         f"Failed to create spider task! Response: {resp_data}")
@@ -67,7 +67,7 @@ class WordCloudGenerationService(RESTfulRPCService):
         return self._data_frame(list(chain.from_iterable(word_clouds)))
     
     def _aggregate_weight(self, word_cloud_df):
-        return word_cloud_df.groupby('word').sum()
+        return word_cloud_df.groupby('word').sum().reset_index()
 
     async def compute(self, news_list: List[NewsDBModel]) -> List[WordCloud]:
         try:

@@ -126,17 +126,24 @@ class BaiduNewsSpiderService(BaseSpiderService):
         self._logger.info(search_urls)
         return search_urls
     
+    def _fill_keyword_from_url(self, parse_result_dict: dict, url: dict, parse_result_model = ParseResult):
+        keyword = self._get_keyword_from_url(url)
+        keyword = keyword.replace("\"", "").replace("%2B", " ")
+        parse_result_dict['keyword'] = parse_result_model(name='keyword', value=keyword)
+        return parse_result_dict
+    
     def _fill_news_contents_blocks(self, news_query_pages: List[Tuple[str, str]], parser: ParserContext, parse_rules: List[ParseRule]):
         parsed_search_result = []
 
         self._logger.info(f"Parsing news blocks..")
 
-        for _, raw_page in news_query_pages:
+        for url, raw_page in news_query_pages:
             search_results = parser.parse(raw_page, parse_rules)
 
             # standardize datetime
             for result in search_results:
                 result_attributes = result.value
+                result_attributes = self._fill_keyword_from_url(result_attributes, url)
                 if 'publishDate' in result_attributes:
                     parsed_datetime = self._standardize_datetime(result_attributes['publishDate'].value)
                     last_month = datetime.now() - timedelta(days=31) # treat the article as outdated
@@ -222,7 +229,11 @@ class BaiduNewsSpiderService(BaseSpiderService):
         if len(keyword_arg) == 0:
             return ""
         
-        return keyword_arg[5:]
+        if keyword_arg[0].startswith('wd='):
+            return keyword_arg[0][3:]
+        
+        if keyword_arg[0].startswith('word='):
+            return keyword_arg[0][3:]
     
     async def _fill_news_contents(self, news_dict: Dict[str, News], content_pages: List[Tuple[str, str]],
                                   content_parser: ParserContext,  parse_rules: List[ParseRule], theme_id: int) -> None:        
@@ -264,13 +275,10 @@ class BaiduNewsSpiderService(BaseSpiderService):
                 try:
                     news.content = content_dict['content'] if 'content' in content_dict else ''
                     
-                    keyword = self._get_keyword_from_url(content_url)
-                    news.keyword = keyword
-                    
                     summary, popularity, article_category = await self._throttled_fetch(3, [
-                        self._article_summary_service.get_summary(theme_id, keyword, news.title, news.content),
-                        self._article_popularity_service.get_popularity(theme_id, keyword, news.title, news.content),
-                        self._article_classification_service.is_medical_article(theme_id, keyword, news.title, news.content)
+                        self._article_summary_service.get_summary(theme_id, news.keyword, news.title, news.content),
+                        self._article_popularity_service.get_popularity(theme_id, news.keyword, news.title, news.content),
+                        self._article_classification_service.is_medical_article(theme_id, news.keyword, news.title, news.content)
                     ])
                     
                     self._logger.info(f'Summary: {summary}')

@@ -4,6 +4,7 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "Main Server",
             "type": "python",
@@ -57,7 +58,7 @@
             "module": "spider_services.common.core.parser"
         },
         {
-            "name": "Baidu News API",
+            "name": "Baidu News Spider API",
             "type": "python",
             "request": "launch",
             "module": "spider_services.baidu_news_spider.app.main"
@@ -109,6 +110,24 @@
             "type": "python",
             "request": "launch",
             "module": "data_services.air_quality.app.services.aqi_report_service"
+        },
+        {
+            "name": "Baidu News Data Service",
+            "type": "python",
+            "request": "launch",
+            "module": "data_services.news.app.services.news_service"
+        },
+        {
+            "name": "Theme Service",
+            "type": "python",
+            "request": "launch",
+            "module": "data_services.news.app.services.theme_service"
+        },
+        {
+            "name": "Word Cloud Data Service",
+            "type": "python",
+            "request": "launch",
+            "module": "data_services.news.app.services.word_cloud_service"
         },
         {
             "name": "Migration Index Data Service",

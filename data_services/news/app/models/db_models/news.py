@@ -14,6 +14,6 @@ class NewsDBModel(DBModel, News):
     news_id: UUID = Field(
         default_factory=lambda: uuid5(
             NAMESPACE_OID, f"News_Object_{datetime.now().timestamp()}"))
-    themeId: Optional[int]
+    
     
     

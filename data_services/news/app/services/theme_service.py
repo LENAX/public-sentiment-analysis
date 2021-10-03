@@ -1,5 +1,7 @@
+from data_services.news.app.models.data_models.theme import Keyword
+from data_services.news.app.rpc.models.spider_args import BaiduNewsSpiderArgs
 from data_services.news.app.rpc.news_spider import NewsSpiderService
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from .base import BaseAsyncCRUDService
 from ..models.db_models import ThemeDBModel
@@ -40,7 +42,7 @@ class ThemeService(BaseAsyncCRUDService):
                 self._logger.info(f"Successfully created a new spider task for theme: {theme}")
             else:
                 self._logger.info(
-                    f"Failed to create a new spider task for theme: {theme}, trial: {n_trial} / max_retry")
+                    f"Failed to create a new spider task for theme: {theme}, trial: {n_trial} / {max_retry}")
                 
         return spider_task_created
     
@@ -63,7 +65,7 @@ class ThemeService(BaseAsyncCRUDService):
             
     async def update_one(self, query: dict, update_data: Theme) -> None:
         try:
-            await self._db_model.update_one(query, update_data)
+            await self._db_model.update_one(query, update_data.dict())
             spider_task_created = await self._create_spider_task(update_data, mode='update')
 
             if not spider_task_created:
@@ -82,14 +84,21 @@ class ThemeService(BaseAsyncCRUDService):
     async def get_many(self, query: dict, page_size: int = 0, page_number: int = 0) -> List[Theme]:
         """
         """
-        pass
+        try:
+            await self._db_model.get(query, limit=page_size, skip=page_size* page_number)
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
 
     async def add_many(self, data_list: List[BaseModel]) -> None:
         return NotImplemented
 
-    async def get_one(self, query: dict) -> Theme:
+    async def get_one(self, query: dict) -> Optional[Theme]:
         theme = await self._db_model.get_one(query)
-        return theme
+        if theme:
+            return self._data_model.parse_obj(theme)
+        else:
+            return None
 
     async def update_many(self, query: dict, data_list: List[BaseModel]) -> None:
         pass
@@ -101,7 +110,8 @@ class ThemeService(BaseAsyncCRUDService):
 if __name__ == "__main__":
     import asyncio
     from devtools import debug
-    from ..db import create_client
+    from ..db.client import create_client
+    from data_services.news.app.rpc.request_client.request_client import RequestClient
 
     async def main():
         db_client = create_client(host='localhost',
@@ -110,14 +120,44 @@ if __name__ == "__main__":
                                   port=27017,
                                   db_name='test')
         ThemeDBModel.db = db_client['test']
-        theme_service = ThemeService(data_model=Theme,
-                                     db_model=ThemeDBModel,
-                                     news_spider_service=None)
+        async with (await RequestClient()) as client_session:
+            news_spider_service = NewsSpiderService(
+                remote_service_endpoint='http://localhost:5002/baidu-news-spider/crawl-task',
+                request_client=client_session,
+                request_model=BaiduNewsSpiderArgs
+            )
+            theme_service = ThemeService(data_model=Theme,
+                                         db_model=ThemeDBModel,
+                                         news_spider_service=news_spider_service)
 
-        await theme_service.add_one()
-        theme = await theme_service.get_one()
+            new_theme = Theme(themeId=0,
+                            areaKeywords=['湖北省', '武汉', '荆门'],
+                            themeKeywords=[
+                                Keyword(keywordType=1, keyword='境外输入'),
+                                Keyword(keywordType=0, keyword='疫苗接种'),],
+                            epidemicKeywords=['新型冠状肺炎'])
+            await theme_service.add_one(new_theme)
+            theme = await theme_service.get_one({'themeId': 0})
 
-        debug(theme)
+            debug(theme)
+            
+            updated_theme = Theme(themeId=0,
+                                areaKeywords=['湖北省', '武汉', '荆门', '黄石市'],
+                                themeKeywords=[
+                                    Keyword(keywordType=1, keyword='境外输入'),
+                                    Keyword(keywordType=0, keyword='疫苗接种'),
+                                    Keyword(keywordType=0, keyword='德尔塔型'), ],
+                                epidemicKeywords=['新型冠状肺炎'])
+            
+            await theme_service.update_one({'themeId': 0}, updated_theme)
+            theme = await theme_service.get_one({'themeId': 0})
+
+            debug(theme)
+            
+            await theme_service.delete_one({'themeId': 0})
+            theme = await theme_service.get_one({'themeId': 0})
+
+            debug(theme)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
