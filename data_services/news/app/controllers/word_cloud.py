@@ -35,7 +35,6 @@ async def get_word_cloud(appId: str, themeId: int,
                          logger: Logger = Depends(create_logger)):
     try:
         word_cloud = await word_cloud_service.compute(themeId)
-        logger.info(f"word_cloud: {word_cloud}")
         return Response[NewsWordCloud](data=word_cloud, message='ok', statusCode=200, status='success')
     except Exception as e:
         traceback.print_exc()
