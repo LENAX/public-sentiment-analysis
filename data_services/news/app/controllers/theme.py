@@ -26,7 +26,7 @@ theme_controller = APIRouter()
 
 @theme_controller.get('/media-monitor/theme', tags=["theme"], response_model=Response)
 @inject
-async def new_theme(pageSize: int = 0, pageNumber: int = 0,
+async def get_theme(pageSize: int = 0, pageNumber: int = 0,
                     theme_service: ThemeService = Depends(Provide[
                         Application.services.theme_service]),
                     logger: Logger = Depends(create_logger)):
@@ -47,6 +47,9 @@ async def new_theme(theme: Theme,
                         Application.services.theme_service]),
                     logger: Logger = Depends(create_logger)):
     try:
+        if theme.areaKeywords is None or theme.themeKeywords is None or theme.epidemicKeywords is None:
+            return Response(message='Invalid input!', statusCode=400, status='success')
+        
         await theme_service.add_one(theme)
         logger.info(f"added theme: {theme}")
         return Response(message='ok', statusCode=200, status='success')
@@ -63,7 +66,10 @@ async def update_theme(theme: Theme,
                            Application.services.theme_service]),
                        logger: Logger = Depends(create_logger)):
     try:
-        await theme_service.update_one(theme.themeId, theme)
+        if theme.areaKeywords is None or theme.themeKeywords is None or theme.epidemicKeywords is None:
+            return Response(message='Invalid input!', statusCode=400, status='success')
+        
+        await theme_service.update_one({'themeId': theme.themeId}, theme)
         logger.info(f"added theme: {theme}")
         return Response(message='ok', statusCode=200, status='success')
     except Exception as e:

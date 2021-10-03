@@ -30,6 +30,7 @@ local_development:
     article_popularity_service: http://localhost:9000/article-popularity
     article_classification_service: http://localhost:9000/article-category
     word_cloud_service: http://localhost:9000/wordcloud
+    news_spider_service: http://localhost:5002/baidu-news-spider/crawl-task
 development:
   <<: *base
 test:

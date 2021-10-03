@@ -43,6 +43,7 @@ class ThemeService(BaseAsyncCRUDService):
             else:
                 self._logger.info(
                     f"Failed to create a new spider task for theme: {theme}, trial: {n_trial} / {max_retry}")
+            n_trial += 1
                 
         return spider_task_created
     
@@ -65,6 +66,7 @@ class ThemeService(BaseAsyncCRUDService):
             
     async def update_one(self, query: dict, update_data: Theme) -> None:
         try:
+            self._logger.info(f"Update: {update_data.dict()}")
             await self._db_model.update_one(query, update_data.dict())
             spider_task_created = await self._create_spider_task(update_data, mode='update')
 
@@ -73,6 +75,7 @@ class ThemeService(BaseAsyncCRUDService):
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
+            raise e
     
     async def delete_one(self, query: dict) -> None:
         try:
@@ -85,7 +88,8 @@ class ThemeService(BaseAsyncCRUDService):
         """
         """
         try:
-            await self._db_model.get(query, limit=page_size, skip=page_size* page_number)
+            theme_list = await self._db_model.get(query, limit=page_size, skip=page_size* page_number)
+            return [self._data_model.parse_obj(theme) for theme in theme_list]
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)

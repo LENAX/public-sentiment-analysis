@@ -4,12 +4,8 @@ from data_services.news.app.models.data_models.word_cloud import NewsWordCloud
 from data_services.news.app.models.response_models.word_cloud import WordCloudResponse
 from data_services.news.app.services import WordCloudService
 from ..models.response_models import Response
-from ..models.data_models import MigrationIndex, MigrationRank
-from ..models.db_models import MigrationIndexDBModel, MigrationRankDBModel
-from typing import Optional, List
 from dependency_injector.wiring import inject, Provide
 from ..container import Application
-from ..services import MigrationIndexReportService, MigrationRankReportService
 import traceback
 import logging
 from datetime import datetime, timedelta

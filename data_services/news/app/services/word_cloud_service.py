@@ -40,8 +40,8 @@ class WordCloudService:
             past_week = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
             past_month = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             weekly_news, monthly_news = await self._gather(*[
-                self._news_service.get_many({'themeId': theme_id, 'date': {'$gte': past_week}}),
-                self._news_service.get_many({'themeId': theme_id, 'date': {'$gte': past_month}}),
+                self._news_service.get_many(query={'themeId': theme_id, 'date': {'$gte': past_week}}),
+                self._news_service.get_many(query={'themeId': theme_id, 'date': {'$gte': past_month}}),
             ])
             
             if not all([type(weekly_news) is list,
@@ -77,7 +77,7 @@ class WordCloudService:
                     wordCloudPastMonth=[]
                 )
                 
-            return self._data_model(theme_id=theme_id,
+            return self._data_model(themeId=theme_id,
                                     createDt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                     wordCloudPastWeek=weekly_word_cloud,
                                     wordCloudPastMonth=monthly_word_cloud)

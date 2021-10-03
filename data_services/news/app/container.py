@@ -1,26 +1,23 @@
 """ Application level dependency container
 """
 
-from data_services.news.app.rpc.models.spider_args import BaiduNewsSpiderArgs
-from data_services.news.app.rpc.news_spider import NewsSpiderService
-from data_services.news.app.models.db_models.theme import ThemeDBModel
+from data_services.news.app.models.data_models.news import News
 from data_services.news.app.models.data_models.theme import Theme
 from data_services.news.app.models.db_models.news import NewsDBModel
-from data_services.news.app.models.data_models.news import News
-from data_services.news.app.rpc.word_cloud_service import WordCloudGenerationService
-from .models.data_models import WordCloud, NewsWordCloud
-
-from dependency_injector.wiring import inject, Provide
+from data_services.news.app.models.db_models.theme import ThemeDBModel
+from data_services.news.app.rpc.models import WordCloud as WordCloudResponse
+from data_services.news.app.rpc.models import WordCloudRequestArgs
+from data_services.news.app.rpc.models.spider_args import BaiduNewsSpiderArgs
+from data_services.news.app.rpc.news_spider import NewsSpiderService
+from data_services.news.app.rpc.word_cloud_service import \
+    WordCloudGenerationService
 from dependency_injector import containers, providers
-from .db import create_client
-from data_services.news.app.rpc.models import (
-    WordCloudRequestArgs, WordCloud as WordCloudResponse,
-)
-    
+
+from .db.client import create_client
+from .models.data_models import NewsWordCloud, WordCloud
+from .rpc.request_client import RequestClient
 from .services import NewsService, ThemeService, WordCloudService
 
-
-from .rpc.request_client import RequestClient
 
 def make_db_client(db_config):
     client = create_client(
@@ -67,6 +64,7 @@ class RPCServiceContainer(containers.DeclarativeContainer):
     )
     news_spider_service = providers.Singleton(
         NewsSpiderService,
+        remote_service_endpoint=config.news_spider_service,
         request_client=resources.http_request_client,
         request_model=BaiduNewsSpiderArgs
     )
@@ -81,7 +79,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         NewsService,
         data_model=News,
         db_model=NewsDBModel)
-    subscription_service = providers.Singleton(
+    theme_service = providers.Singleton(
         ThemeService,
         data_model=Theme,
         db_model=ThemeDBModel,
@@ -89,8 +87,8 @@ class ServiceContainer(containers.DeclarativeContainer):
     word_cloud_service = providers.Singleton(
         WordCloudService,
         data_model=NewsWordCloud,
-        news_service=NewsService,
-        word_cloud_generation_service=rpc_services.word_cloud_generation_service
+        news_service=news_service,
+        word_cloud_generation_service=rpc_services.word_cloud_service
     )
 
 
@@ -109,7 +107,14 @@ class Application(containers.DeclarativeContainer):
         ResourceContainer,
         config=config.db,
     )
-
+    
+    rpc_services = providers.Container(
+        RPCServiceContainer,
+        resources=resources,
+        config=config.rpc
+    )
+    
     services = providers.Container(
         ServiceContainer,
-        config=config)
+        config=config,
+        rpc_services=rpc_services)

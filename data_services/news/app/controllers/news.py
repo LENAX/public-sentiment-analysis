@@ -2,12 +2,10 @@ from fastapi import APIRouter, Depends
 
 from data_services.news.app.services import NewsService
 from ..models.response_models import Response
-from ..models.data_models import News, MigrationRank
-from ..models.db_models import NewsDBModel, MigrationRankDBModel
-from typing import Optional, List
+from ..models.data_models import News
+from typing import List
 from dependency_injector.wiring import inject, Provide
 from ..container import Application
-from ..services import NewsReportService, MigrationRankReportService
 import traceback
 import logging
 from datetime import datetime, timedelta
@@ -23,7 +21,7 @@ def create_logger():
 
 
 def get_past_n_days(n_days=0):
-    return (datetime.now() - timedelta(days=n_days)).strftime("%Y%m%d")
+    return (datetime.now() - timedelta(days=n_days)).strftime("%Y-%m-%d")
 
 
 news_controller = APIRouter()
@@ -31,17 +29,17 @@ news_controller = APIRouter()
 
 @news_controller.get('/media-monitor/news', tags=["news"], response_model=Response)
 @inject
-async def get_migration_index(appId: str, themeId: int,
-                              startDate: str = get_past_n_days(30),
-                              endDate: str = get_past_n_days(0),
-                              pageSize: int = 30, pageNumber: int = 0,
-                              news_service: NewsService = Depends(Provide[
-                                  Application.services.news_service]),
-                              logger: Logger = Depends(create_logger)):
+async def get_news(appId: str, themeId: int,
+                    startDate: str = get_past_n_days(30),
+                    endDate: str = get_past_n_days(0),
+                    pageSize: int = 30, pageNumber: int = 0,
+                    news_service: NewsService = Depends(Provide[
+                        Application.services.news_service]),
+                    logger: Logger = Depends(create_logger)):
     try:
         # could be refactored to a query builder method
         required_args = {'date': {'$gte': startDate, '$lte': endDate},
-                         'theme_id': themeId}
+                         'themeId': themeId}
         query = {**required_args}
         logger.info(f"query: {query}")
         news_list = await news_service.get_many(query, page_size=pageSize, page_number=pageNumber)
