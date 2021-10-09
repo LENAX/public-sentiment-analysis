@@ -25,6 +25,14 @@ class MigrationRankReportService(BaseAsyncCRUDService):
         self._data_model = data_model
         self._db_model = db_model
         self._logger = logger
+        
+    def _to_dataframe(self, data: List[MigrationRankDBModel]):
+        data_list = [d.dict() for d in data]
+        return pd.DataFrame(data_list)
+    
+    def _remove_duplicates(self, df):
+        return df.sort_values(by=['date', "last_update"]).drop_duplicates(subset=[
+            "date", "to_province_areaCode", "from_province_areaCode", "direction"], keep='last')
 
     async def get_many(self, query: dict, page_size: int = 0, page_number: int = 0) -> List[MigrationRank]:
         """ Get the most recent aqi report for db
@@ -34,7 +42,9 @@ class MigrationRankReportService(BaseAsyncCRUDService):
             limit = page_size
             skip = page_size * page_number
             migration_ranks = await self._db_model.get(query, limit=limit, skip=skip)
-            return [self._data_model.parse_obj(report) for report in migration_ranks]
+            migration_rank_df = self._to_dataframe(migration_ranks)
+            unique_migration_rank_df = self._remove_duplicates(migration_rank_df)
+            return [self._data_model.parse_obj(report) for report in unique_migration_rank_df.to_dict(orient='records')]
 
         except Exception as e:
             traceback.print_exc()

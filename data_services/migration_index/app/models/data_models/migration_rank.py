@@ -10,6 +10,7 @@ class MigrationRank(BaseModel):
     from_province_areaCode: Optional[str]
     direction: Optional[str]
     value: Optional[float]
+    last_update: Optional[str]
     
     
     @classmethod

@@ -134,11 +134,15 @@ class MongoModel(BaseModel):
             print(e)
 
     @classmethod
-    async def aggregate(cls, pipeline: List[dict]) -> List["MongoModel"]:
+    async def aggregate(cls, pipeline: List[dict],
+                        limit: Optional[int] = 0,
+                        skip: Optional[int] = 0) -> List["MongoModel"]:
         try:
             cursor = cls.db[cls.__collection__].aggregate(pipeline)
+            
             agg_results = [cls.from_mongo(result) async for result in cursor]
             return agg_results
+            
         except Exception as e:
             traceback.print_exc()
             raise e

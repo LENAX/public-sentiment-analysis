@@ -103,11 +103,12 @@ class WordCloudService:
                     wordCloudPastWeek=[],
                     wordCloudPastMonth=[]
                 )
-                
+            
+            # only keep the first 40 words
             word_cloud = self._data_model(themeId=theme_id,
                                           createDt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                          wordCloudPastWeek=weekly_word_cloud,
-                                          wordCloudPastMonth=monthly_word_cloud)
+                                          wordCloudPastWeek=weekly_word_cloud[:40],
+                                          wordCloudPastMonth=monthly_word_cloud[:40])
             await self._db_model.update_one({'themeId': theme_id}, word_cloud.dict())
             
         except Exception as e:

@@ -7,6 +7,7 @@ class MigrationIndex(BaseModel):
     date: Optional[str]
     migration_index: Optional[float]
     migration_type: Optional[str]
+    last_update: Optional[str]
     
     
     @classmethod
