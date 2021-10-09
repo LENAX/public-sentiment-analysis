@@ -13,6 +13,7 @@ from dateutil import parser as dt_parser
 from spider_services.baidu_news_spider.app.rpc import (
     ArticleClassificationService, ArticlePopularityService,
     ArticleSummaryService)
+from spider_services.baidu_news_spider.app.rpc.word_cloud_rpc_service import WordCloudRPCService
 from spider_services.common.models.data_models.parser_models import ParseResult
 
 from ...common.core import (BaseRequestClient, BaseSpider, ParserContext,
@@ -49,6 +50,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
                  article_classification_service: ArticleClassificationService,
                  article_popularity_service: ArticlePopularityService,
                  article_summary_service: ArticleSummaryService,
+                 word_cloud_rpc_service: WordCloudRPCService,
                  datetime_parser: Callable = dt_parser,
                  throttled_fetch: Callable = throttled,
                  logger: Logger = spider_service_logger,
@@ -61,6 +63,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
         self._article_classification_service = article_classification_service
         self._article_popularity_service = article_popularity_service
         self._article_summary_service = article_summary_service
+        self._word_cloud_rpc_service = word_cloud_rpc_service
         self._datetime_parser = datetime_parser
         self._throttled_fetch = throttled_fetch
         self._logger = logger
@@ -406,6 +409,8 @@ class BaiduNewsSpiderService(BaseSpiderService):
             if len(results) > 0:
                 self._logger.info(f"Saving results...")
                 await self._db_model.insert_many(results)
+                self._logger.info(f"Computing word cloud...")
+                await self._word_cloud_rpc_service.compute(theme_id=rules.theme_id, app_id="xxx")
                 self._logger.info("Done!")
             else:
                 self._logger.info("No new results retrieved in this run...")
