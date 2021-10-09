@@ -201,9 +201,9 @@ class MongoModel(BaseModel):
     
 
     @classmethod
-    async def update_one(cls, filter: dict, update: dict) -> None:
+    async def update_one(cls, filter: dict, update: dict, upsert: bool = True) -> None:
         try:
-            update_result = await cls.db[cls.__collection__].update_one(filter, {"$set":update})
+            update_result = await cls.db[cls.__collection__].update_one(filter, {"$set":update}, upsert=upsert)
             if update_result:
                 print(
                     f"Successfully matched {update_result.matched_count}"

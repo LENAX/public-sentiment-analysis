@@ -12,7 +12,7 @@ class ArticlePopularity(BaseModel):
     hot_value: int
 
 class ArticleCategory(BaseModel):
-    whether_medical_result: Literal[1,0]
+    is_medical_article: Literal[1,0]
 
 
 class WeightedWord(BaseModel):

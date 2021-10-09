@@ -68,7 +68,7 @@ def generate_popularity(args: ArticleServiceArgs):
 
 @app.post("/article-category", response_model=Response[ArticleCategory])
 def generate_category(args: ArticleServiceArgs):
-    return Response(data=ArticleCategory(whether_medical_result=1), statusCode=200, status="success", message="ok")
+    return Response(data=ArticleCategory(is_medical_article=1), statusCode=200, status="success", message="ok")
 
 
 @app.post("/wordcloud", response_model=Response[WordCloud])

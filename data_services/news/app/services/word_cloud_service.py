@@ -12,6 +12,7 @@ import pandas as pd
 from data_services.news.app.services.news_service import NewsService
 
 from ..models.data_models import NewsWordCloud, WordCloud
+from ..models.db_models import WordCloudDBModel
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
@@ -25,17 +26,43 @@ class WordCloudService:
 
     def __init__(self,
                  data_model: NewsWordCloud,
+                 db_model: WordCloudDBModel,
                  news_service: NewsService,
                  word_cloud_generation_service: WordCloudGenerationService,
                  gather: Callable = asyncio.gather,
                  logger: Logger = logger):
         self._data_model = data_model
+        self._db_model = db_model
         self._news_service = news_service
         self._word_cloud_generation_service = word_cloud_generation_service
         self._gather = gather
         self._logger = logger
-
-    async def compute(self, theme_id: int) -> NewsWordCloud:
+        
+    async def get_one(self, theme_id: int) -> NewsWordCloud:
+        try:
+            word_cloud = await self._db_model.get_one({'themeId': theme_id})
+            
+            if word_cloud is None:
+                return self._data_model(
+                    theme_id=theme_id,
+                    createDt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    wordCloudPastWeek=[],
+                    wordCloudPastMonth=[]
+                )
+            else:
+                return self._data_model.parse_obj(word_cloud)
+            
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(e)
+            return self._data_model(
+                theme_id=theme_id,
+                createDt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                wordCloudPastWeek=[],
+                wordCloudPastMonth=[]
+            )
+            
+    async def compute(self, theme_id: int) -> None:
         try:
             past_week = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
             past_month = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
@@ -77,20 +104,16 @@ class WordCloudService:
                     wordCloudPastMonth=[]
                 )
                 
-            return self._data_model(themeId=theme_id,
-                                    createDt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                    wordCloudPastWeek=weekly_word_cloud,
-                                    wordCloudPastMonth=monthly_word_cloud)
+            word_cloud = self._data_model(themeId=theme_id,
+                                          createDt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                          wordCloudPastWeek=weekly_word_cloud,
+                                          wordCloudPastMonth=monthly_word_cloud)
+            await self._db_model.update_one({'themeId': theme_id}, word_cloud.dict())
             
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
-            return self._data_model(
-                theme_id=theme_id,
-                createDt=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                wordCloudPastWeek=[],
-                wordCloudPastMonth=[]
-            )
+            raise e 
         
 
 if __name__ == "__main__":

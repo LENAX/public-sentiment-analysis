@@ -82,6 +82,12 @@
             "module": "spider_services.baidu_news_spider.app.service"
         },
         {
+            "name": "Baidu News Spider Runner",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.run_news_spider"
+        },
+        {
             "name": "Migration Index Spider",
             "type": "python",
             "request": "launch",

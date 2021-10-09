@@ -36,9 +36,9 @@ class ArticleClassificationService(RESTfulRPCService):
                 else:
                     self._logger.error(
                         f"Failed to receive article summary data from remote server! Response: {resp_data}")
-                    return self._response_model(whether_medical_result=False)
+                    return self._response_model(is_medical_article=False)
 
         except Exception as e:
             traceback.print_exc()
             self._logger.error(e)
-            return self._response_model(whether_medical_result=False)
+            return self._response_model(is_medical_article=False)

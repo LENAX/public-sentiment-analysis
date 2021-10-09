@@ -287,7 +287,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
                     
                     news.summary = summary.abstract_result
                     news.popularity = popularity.hot_value
-                    news.is_medical_article = article_category.whether_medical_result
+                    news.is_medical_article = article_category.is_medical_article
                 except Exception as e:
                     traceback.print_exc()
                     self._logger.error(e)
