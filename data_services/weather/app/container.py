@@ -7,7 +7,7 @@ from .models.data_models import CMADailyWeather, CMAWeatherReport
 from dependency_injector.wiring import inject, Provide
 from dependency_injector import containers, providers
 from .db import create_client
-from .services import CMAWeatherReportService
+from .services import CMAWeatherReportService, WeatherHistoryService
 
 
 def make_db_client(db_config):
@@ -35,6 +35,12 @@ class ServiceContainer(containers.DeclarativeContainer):
 
     cma_weather_report_service = providers.Singleton(
         CMAWeatherReportService,
+        cma_daily_weather_data_model=CMADailyWeather,
+        cma_weather_report_data_model=CMAWeatherReport,
+        cma_weather_report_db_model=CMAWeatherReportDBModel)
+    
+    weather_history_service = providers.Singleton(
+        WeatherHistoryService,
         cma_daily_weather_data_model=CMADailyWeather,
         cma_weather_report_data_model=CMAWeatherReport,
         cma_weather_report_db_model=CMAWeatherReportDBModel)

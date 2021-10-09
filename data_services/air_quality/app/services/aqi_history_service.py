@@ -1,8 +1,8 @@
 from typing import List, Any, Coroutine
 from pydantic import parse_obj_as, BaseModel
 from .base_services import BaseAsyncCRUDService
-from ..models.db_models import CMAWeatherReportDBModel, AirQualityDBModel
-from ..models.data_models import WeatherAQI, CMAWeatherReport, CMADailyWeather
+from ..models.db_models import AirQualityDBModel
+from ..models.data_models import AirQuality
 import numpy as np
 import pandas as pd
 import traceback
@@ -15,27 +15,27 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-class WeatherHistoryService(BaseAsyncCRUDService):
-    """ Provides CMA Historical Weather Data Access
+class AQIHistoryService(BaseAsyncCRUDService):
+    """ Provides Air Quality Historical Data Access
     """
 
     def __init__(self,
-                 cma_daily_weather_data_model: CMADailyWeather,
-                 cma_weather_report_data_model: CMAWeatherReport,
-                 cma_weather_report_db_model: CMAWeatherReportDBModel,
+                 data_model: AirQuality,
+                 db_model: AirQualityDBModel,
                  logger: Logger = logger):
-        self._output_model = cma_daily_weather_data_model
-        self._data_model = cma_weather_report_data_model
-        self._db_model = cma_weather_report_db_model
+        self._data_model = data_model
+        self._db_model = db_model
         self._logger = logger
 
-    async def get_many(self, query: dict, page_size: int = 0, page_number: int = 0) -> List[CMAWeatherReport]:
+    async def get_many(self, query: dict, page_size: int = 0, page_number: int = 0) -> List[AirQuality]:
+        """ Get the most recent aqi report for db
+        """
         try:
-            # query should include province, city, start date and end date
             limit = page_size
             skip = page_size * page_number
-            historical_weather_report_db_records = await self._db_model.get(query, limit=limit, skip=skip)
-            return [self._data_model.parse_obj(record) for record in historical_weather_report_db_records]
+            aqi_reports = await self._db_model.get(query, skip=skip, limit=limit)
+            return [self._data_model.parse_obj(report) for report in aqi_reports]
+
         except Exception as e:
             traceback.print_exc()
             self._logger.error(f"Error: {e}")
@@ -74,19 +74,16 @@ if __name__ == "__main__":
                                   password='root',
                                   port=27017,
                                   db_name='test')
-        CMAWeatherReportDBModel.db = db_client['test']
-        cma_weather_report_service = WeatherHistoryService(
-            cma_daily_weather_data_model=CMADailyWeather,
-            cma_weather_report_data_model=CMAWeatherReport,
-            cma_weather_report_db_model=CMAWeatherReportDBModel
-        )
+        AirQualityDBModel.db = db_client['test']
+        aqi_report_service = AQIHistoryService(
+            data_model=AirQuality, db_model=AirQualityDBModel)
 
         # results = await CMAWeatherReportDBModel.get({'location.province': '广东'})
         # debug(results)
-        weather_reports = await cma_weather_report_service.get_many({
-            'location.province': '湖北', 'create_dt': {"$gte": '2021-09-14'}})
+        aqi_reports = await aqi_report_service.get_many({
+            'province': '湖北', 'create_dt': {"$gte": '2021-09-10'}})
 
-        debug(weather_reports)
+        debug(aqi_reports)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())

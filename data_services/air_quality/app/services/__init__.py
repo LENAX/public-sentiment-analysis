@@ -1,1 +1,2 @@
 from .aqi_report_service import AQIReportService
+from .aqi_history_service import AQIHistoryService

@@ -6,7 +6,7 @@ from .models.data_models import AirQuality
 
 from dependency_injector import containers, providers
 from .db import create_client
-from .services import AQIReportService
+from .services import AQIReportService, AQIHistoryService
 
 
 def make_db_client(db_config):
@@ -35,6 +35,11 @@ class ServiceContainer(containers.DeclarativeContainer):
 
     aqi_report_service = providers.Singleton(
         AQIReportService,
+        data_model=AirQuality,
+        db_model=AirQualityDBModel)
+    
+    aqi_history_service = providers.Singleton(
+        AQIHistoryService,
         data_model=AirQuality,
         db_model=AirQualityDBModel)
 

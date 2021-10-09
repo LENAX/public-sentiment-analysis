@@ -1,1 +1,2 @@
 from .cma_weather_service import CMAWeatherReportService
+from .weather_history_service import WeatherHistoryService
