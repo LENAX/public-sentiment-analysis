@@ -123,7 +123,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
         return None
     
     def _build_news_query_urls(self, base_url: str, keywords: List[str], max_page: int, past_days: int = 30) -> List[str]:
-        search_urls = [f"{base_url}&rtt=4&bsst=1&cl=2&wd={kw}&rn=50&pn={page_number}&lm={past_days}"
+        search_urls = [f"{base_url}&rtt=1&bsst=1&cl=2&wd={kw}&rn=50&pn={page_number}&lm={past_days}"
                        for page_number in range(max_page)
                        for kw in keywords]
         self._logger.info(search_urls)

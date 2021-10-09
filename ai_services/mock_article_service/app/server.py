@@ -74,12 +74,12 @@ def generate_category(args: ArticleServiceArgs):
 @app.post("/wordcloud", response_model=Response[WordCloud])
 def generate_wordcloud(args: WordCloudRequestArgs):
     random_words = [''.join(random.choices(
-        string.ascii_lowercase + string.digits, k=5)) for i in range(500)]
+        string.ascii_lowercase + string.digits, k=5)) for i in range(10)]
 
     data = [WeightedWord.parse_obj({
-            "word": random_words[np.random.randint(0, 40)],
+            "word": random_words[np.random.randint(0, 10)],
             "weight": np.random.randn()})
-            for i in range(40)]
+            for i in range(5)]
     return Response(data=WordCloud(word_cloud=data), statusCode=200, status="success", message="ok")
 
 

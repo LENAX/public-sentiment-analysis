@@ -30,11 +30,11 @@ word_cloud_controller = APIRouter()
 
 @word_cloud_controller.post('/media-monitor/wordCloud/compute-task', tags=["media-monitor"], response_model=Response)
 @inject
-async def get_word_cloud(args: WordCloudRequestArgs,
-                         background_tasks: BackgroundTasks,
-                         word_cloud_service: WordCloudService = Depends(Provide[
-                             Application.services.word_cloud_service]),
-                         logger: Logger = Depends(create_logger)):
+async def compute_word_cloud(args: WordCloudRequestArgs,
+                             background_tasks: BackgroundTasks,
+                             word_cloud_service: WordCloudService = Depends(Provide[
+                                Application.services.word_cloud_service]),
+                             logger: Logger = Depends(create_logger)):
     try:
         logger.info("Computing word cloud in the backgrond...")
         background_tasks.add_task(word_cloud_service.compute, args.themeId)

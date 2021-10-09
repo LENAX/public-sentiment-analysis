@@ -6,6 +6,8 @@ from spider_services.baidu_news_spider.app.rpc import (
     ArticleSummaryService)
 from spider_services.baidu_news_spider.app.rpc.models import (
     ArticlePopularity, ArticleSummary)
+from spider_services.baidu_news_spider.app.rpc.models.word_cloud import NewsWordCloud
+from spider_services.baidu_news_spider.app.rpc.word_cloud_rpc_service import WordCloudRPCService
 from spider_services.common.core.parser import ParserContextFactory
 from spider_services.common.models.data_models.news import News
 from spider_services.common.models.db_models.news import NewsDBModel
@@ -80,6 +82,13 @@ class RPCServiceContainer(containers.DeclarativeContainer):
         request_client=resources.http_request_client,
         response_model=ArticleCategory
     )
+    
+    word_cloud_service = providers.Singleton(
+        WordCloudRPCService,
+        remote_service_endpoint=config.word_cloud_service,
+        request_client=resources.http_request_client,
+        response_model=NewsWordCloud
+    )
 
 class ServiceContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
@@ -96,6 +105,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         article_classification_service=rpc_services.article_classification_service,
         article_popularity_service=rpc_services.article_popularity_service,
         article_summary_service=rpc_services.article_summary_service,
+        word_cloud_rpc_service=rpc_services.word_cloud_service
     )
 
 

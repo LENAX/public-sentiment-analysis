@@ -29,6 +29,7 @@ local_development:
     article_summary_service: http://localhost:9000/content-abstract
     article_popularity_service: http://localhost:9000/article-popularity
     article_classification_service: http://localhost:9000/article-category
+    word_cloud_service: http://localhost:8082/media-monitor/wordCloud/compute-task
 development:
   <<: *base
 test:

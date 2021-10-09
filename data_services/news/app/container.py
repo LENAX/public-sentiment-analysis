@@ -5,6 +5,7 @@ from data_services.news.app.models.data_models.news import News
 from data_services.news.app.models.data_models.theme import Theme
 from data_services.news.app.models.db_models.news import NewsDBModel
 from data_services.news.app.models.db_models.theme import ThemeDBModel
+from data_services.news.app.models.db_models.word_cloud import WordCloudDBModel
 from data_services.news.app.rpc.models import WordCloud as WordCloudResponse
 from data_services.news.app.rpc.models import WordCloudRequestArgs
 from data_services.news.app.rpc.models.spider_args import BaiduNewsSpiderArgs
@@ -87,6 +88,7 @@ class ServiceContainer(containers.DeclarativeContainer):
     word_cloud_service = providers.Singleton(
         WordCloudService,
         data_model=NewsWordCloud,
+        db_model=WordCloudDBModel,
         news_service=news_service,
         word_cloud_generation_service=rpc_services.word_cloud_service
     )
