@@ -79,7 +79,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
         """
         try:
             if not self._is_valid_response_data(data):
-                self._logger.error(f'Invalid response data: {data}')
+                self._logger.error(f'Requested area code: {areaCode}, Invalid response data: {data}')
                 return []
             
             migration_indexes = []
