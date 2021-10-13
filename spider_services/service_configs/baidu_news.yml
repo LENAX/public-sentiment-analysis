@@ -6,7 +6,7 @@ max_concurrency: 10
 max_depth: null
 max_pages: 2
 max_retry: 10
-max_size: null
+max_size: 50
 theme_id: 123
 parsing_pipeline:
 - name: null

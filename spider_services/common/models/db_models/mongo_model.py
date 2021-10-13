@@ -127,7 +127,7 @@ class MongoModel(BaseModel):
     async def bulk_write(cls, requests):
         try:
             print(f"Bulk writing {len(requests)} items")
-            result = await cls.db[cls.__collection__].bulk_write(requests)
+            result = await cls.db[cls.__collection__].bulk_write(requests, ordered=False)
             if result:
                 print(f"Successfully matched {result.matched_count}"
                       f" and updated {result.modified_count} records.")

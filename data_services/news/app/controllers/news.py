@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from data_services.news.app.models.response_models.news import NewsResponse
+from data_services.news.app.models.response_models.news import NewsResponse, Article
 
 from data_services.news.app.services import NewsService
 from ..models.response_models import Response
@@ -44,14 +44,15 @@ async def get_news(appId: str, themeId: int,
         query = {**required_args}
         logger.info(f"query: {query}")
         news_list = await news_service.get_many(query, page_size=pageSize, page_number=pageNumber)
-        logger.info(f"news_list: {news_list}")
+        total_news = await news_service.count(query)
+        # logger.info(f"news_list: {news_list}")
         
         if len(news_list) > 0:
             news_response = NewsResponse(
-                total=len(news_list),
+                total=total_news,
                 themeId=themeId,
                 createDt=news_list[-1].create_dt,
-                articles=news_list
+                articles=[Article.parse_obj(news) for news in news_list]
             )
             return Response[NewsResponse](data=news_response, message='ok', statusCode=200, status='success')
         else:

@@ -197,8 +197,6 @@ class MongoModel(BaseModel):
         except AttributeError as e:
             print("You must set db instance before getting any data")
             raise e
-        
-    
 
     @classmethod
     async def update_one(cls, filter: dict, update: dict, upsert: bool = True) -> None:
@@ -210,6 +208,16 @@ class MongoModel(BaseModel):
                     f" and updated {update_result.modified_count} records.")
         except AttributeError as e:
             print("You must set db instance before getting any data")
+            raise e
+        
+        
+    @classmethod
+    async def count(cls, filter: dict) -> int:
+        try:
+            record_count = await cls.db[cls.__collection__].count_documents(filter)
+            return record_count
+        except Exception as e:
+            print(e)
             raise e
 
     async def save(self):

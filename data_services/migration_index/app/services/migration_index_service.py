@@ -42,9 +42,7 @@ class MigrationIndexReportService(BaseAsyncCRUDService):
             limit = page_size
             skip = page_size * page_number
             migration_indexes = await self._db_model.get(query, limit=limit, skip=skip)
-            migration_index_df = self._to_dataframe(migration_indexes)
-            unique_migration_rank_df = self._remove_duplicates(migration_index_df)
-            return [self._data_model.parse_obj(report) for report in unique_migration_rank_df.to_dict(orient='records')]
+            return [self._data_model.parse_obj(report) for report in migration_indexes]
 
         except Exception as e:
             traceback.print_exc()

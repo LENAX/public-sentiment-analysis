@@ -1,2 +1,2 @@
 from .base import Response
-from .news import NewsResponse
+from .news import NewsResponse, Article

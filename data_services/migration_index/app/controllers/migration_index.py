@@ -28,9 +28,8 @@ migration_report_controller = APIRouter()
 @migration_report_controller.get('/migration-index', tags=["migration-index"], response_model=Response[List[MigrationIndex]])
 @inject
 async def get_migration_index(areaCode: Optional[str] = None, startDate: str = get_past_n_days(1), 
-                              endDate: str = get_past_n_days(0),
-                              migrationType: Optional[str] = None,
-                              pageSize: int = 30, pageNumber: int = 0,
+                              endDate: str = get_past_n_days(0), migrationType: Optional[str] = None,
+                              pageSize: int = 30, pageNumber: int = 0, provinceOnly: bool = True,
                               migration_index_service: MigrationIndexReportService = Depends(Provide[
                                   Application.services.migration_index_report_service]),
                               logger: Logger = Depends(create_logger)):
@@ -43,6 +42,10 @@ async def get_migration_index(areaCode: Optional[str] = None, startDate: str = g
                     for key in optional_args if optional_args[key] is not None}}
         logger.info(f"query: {query}")
         migration_indexes = await migration_index_service.get_many(query, page_size=pageSize, page_number=pageNumber)
+        
+        if province_only:
+            migration_indexes =[data for data in migration_indexes if data.areaCode.endswith('0000')]
+        
         logger.info(f"migration_indexes: {migration_indexes}")
         return Response[List[MigrationIndex]](data=migration_indexes, message='ok', statusCode=200, status='success')
     except Exception as e:
@@ -56,8 +59,7 @@ async def get_migration_index(areaCode: Optional[str] = None, startDate: str = g
 async def get_migration_rank(from_province: Optional[str] = None, to_province: Optional[str] = None,
                              from_province_areaCode: Optional[str] = None, to_province_areaCode: Optional[str] = None,
                              startDate: str = get_past_n_days(1), endDate: str = get_past_n_days(0),
-                             direction: Optional[str] = None,
-                             pageSize: int = 30, pageNumber: int = 0,
+                             direction: Optional[str] = None, pageSize: int = 30, pageNumber: int = 0,
                              migration_rank_service: MigrationRankReportService = Depends(Provide[
                                 Application.services.migration_rank_report_service]),
                              logger: Logger = Depends(create_logger)):
@@ -71,6 +73,7 @@ async def get_migration_rank(from_province: Optional[str] = None, to_province: O
                     for key in optional_args if optional_args[key] is not None}}
         logger.info(f"query: {query}")
         migration_ranks = await migration_rank_service.get_many(query, page_size=pageSize, page_number=pageNumber)
+        
         logger.info(f"migration_ranks: {migration_ranks}")
         return Response[List[MigrationRank]](data=migration_ranks, message='ok', statusCode=200, status='success')
     except Exception as e:

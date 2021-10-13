@@ -61,6 +61,7 @@ async def get_migration_index(args: MigrationIndexSpiderArgs,
             return Response(message="url should be specified", statusCode=400, status="failed")
 
         rules.mode = args.mode
+        rules.time_range = TimeRange(start_date=args.start_date, end_date=args.end_date)
         spider_logger.info(f"Spider mode: {args.mode}")
         background_tasks.add_task(spider_service.crawl, [args.url], rules)
         spider_logger.info(f"Running in background ...")

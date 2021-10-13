@@ -94,6 +94,12 @@
             "module": "spider_services.migration_index_spider.app.service.migration_index_spider"
         },
         {
+            "name": "Migration Index Spider Server",
+            "type": "python",
+            "request": "launch",
+            "module": "spider_services.migration_index_spider.app.main"
+        },
+        {
             "name": "Migration Rank Spider",
             "type": "python",
             "request": "launch",

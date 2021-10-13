@@ -1,6 +1,7 @@
 import logging
 import re
 import traceback
+import random
 from datetime import datetime, timedelta
 from logging import Logger
 from multiprocessing import cpu_count
@@ -199,11 +200,11 @@ class BaiduNewsSpiderService(BaseSpiderService):
         return parsed_search_result
     
     
-    async def _fetch_news(self, parsed_search_result: List[ParseResult], max_concurrency: int):
-        if len(parsed_search_result) == 0:
+    async def _fetch_news(self, news_dict: Dict[str, News], max_concurrency: int):
+        if len(news_dict) == 0:
             return []
         
-        content_urls = [result.value['link'].value for result in parsed_search_result]
+        content_urls = list(news_dict.keys())
         content_spiders = self._spider_class.create_from_urls(
             content_urls, self._request_client)
         content_pages = await self._throttled_fetch(max_concurrency, [spider.fetch() for spider in content_spiders])
@@ -277,13 +278,9 @@ class BaiduNewsSpiderService(BaseSpiderService):
                     
                 try:
                     news.content = content_dict['content'] if 'content' in content_dict else ''
-                    
-                    summary, popularity, article_category = await self._throttled_fetch(3, [
-                        self._article_summary_service.get_summary(theme_id, news.keyword, news.title, news.content),
-                        self._article_popularity_service.get_popularity(theme_id, news.keyword, news.title, news.content),
-                        self._article_classification_service.is_medical_article(theme_id, news.keyword, news.title, news.content)
-                    ])
-                    
+                    summary = await self._article_summary_service.get_summary(theme_id, news.keyword, news.title, news.content)
+                    popularity = await self._article_popularity_service.get_popularity(theme_id, news.keyword, news.title, news.content)
+                    article_category = await self._article_classification_service.is_medical_article(theme_id, news.keyword, news.title, news.content)
                     self._logger.info(f'Summary: {summary}')
                     self._logger.info(f'popularity: {popularity}')
                     self._logger.info(f'is medical article: {article_category}')
@@ -318,6 +315,12 @@ class BaiduNewsSpiderService(BaseSpiderService):
                 news_dict.pop(key)
 
         return news_dict
+    
+    
+    def _apply_content_filter(self, news_dict: Dict[str, News], pattern_str: str):
+        content_pattern = re.compile(pattern_str)
+        return {key: news_dict[key] for key in news_dict
+                if content_pattern.match(news_dict[key].title)}
         
     async def crawl(self, urls: List[str], rules: ScrapeRules) -> None:
         """ Crawl search results within given rules like time range, keywords, and etc.
@@ -335,6 +338,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
             assert (len(urls) > 0 and
                     type(rules.max_pages) is int and rules.max_pages > 0 and
                     rules.keywords is not None and
+                    rules.url_patterns is not None and len(rules.url_patterns) > 0 and
                     len(rules.keywords.include) > 0 and rules.parsing_pipeline is not None and 
                     len(rules.parsing_pipeline) >= 2 and type(rules.theme_id) is int)
 
@@ -344,6 +348,7 @@ class BaiduNewsSpiderService(BaseSpiderService):
             # generate search page urls given keywords and page limit
             news_query_urls = self._build_news_query_urls(
                 urls[0], rules.keywords.include, rules.max_pages, rules.time_range.past_days)
+                        
             spiders = self._spider_class.create_from_urls(news_query_urls, self._request_client)
 
             # concurrently fetch search results with a concurrency limit
@@ -374,12 +379,13 @@ class BaiduNewsSpiderService(BaseSpiderService):
 
             news_list = self._to_news(parsed_search_result)
             news_dict = {news.link: news for news in news_list}
+            news_dict =  self._apply_content_filter(news_dict, rules.url_patterns[0])
 
             self._logger.info(f"Got {len(parsed_search_result)} after filtering...")
             self._logger.info(f"Start crawling news pages...")
            
             # 4. fetch remaining pages
-            content_pages = await self._fetch_news(parsed_search_result, rules.max_concurrency)
+            content_pages = await self._fetch_news(news_dict, rules.max_concurrency)
 
             # 5. use the last pipeline and extract contents. (title, content, url)
             self._logger.info(f"Start parsing news pages")

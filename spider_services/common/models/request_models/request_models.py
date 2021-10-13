@@ -1,7 +1,7 @@
 from typing import Optional, List, Union
 from typing_extensions import Literal
 from pydantic import BaseModel, validator
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from ...enums import ContentType, JobType, Parser, ParseRuleType
 from devtools import debug
 
@@ -144,7 +144,9 @@ class CMAWeatherSpiderArgs(BaseModel):
     
 class MigrationIndexSpiderArgs(BaseModel):
     url: str = "https://huiyan.baidu.com/migration/historycurve.json"
-    mode: Literal['update', 'history'] = 'update'
+    mode: Literal['update', 'history', 'fill'] = 'update'
+    start_date: Optional[str] = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
+    end_date: Optional[str] = datetime.now().strftime("%Y-%m-%d 00:00:00")
     
 
 class MigrationRankSpiderArgs(BaseModel):

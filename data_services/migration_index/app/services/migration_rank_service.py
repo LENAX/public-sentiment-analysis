@@ -42,6 +42,10 @@ class MigrationRankReportService(BaseAsyncCRUDService):
             limit = page_size
             skip = page_size * page_number
             migration_ranks = await self._db_model.get(query, limit=limit, skip=skip)
+            
+            if len(migration_ranks) == 0:
+                return []
+            
             migration_rank_df = self._to_dataframe(migration_ranks)
             unique_migration_rank_df = self._remove_duplicates(migration_rank_df)
             return [self._data_model.parse_obj(report) for report in unique_migration_rank_df.to_dict(orient='records')]

@@ -3,7 +3,7 @@ import traceback
 from datetime import datetime, timedelta
 from itertools import product
 from logging import Logger
-from typing import Callable
+from typing import Callable, List
 
 from dateutil import parser
 from dependency_injector.wiring import Provide, inject
@@ -29,6 +29,16 @@ def load_config():
     return load_service_config('baidu_news')
 
 
+def build_keyword(keyword_list: List[str]) -> str:
+    return f"%7B{'%2C'.join(keyword_list)}%7B"
+
+
+def build_pattern(area_keywords: List[str], other_keywords: List[str]) -> str:
+    if len(area_keywords) == 0 or len(other_keywords) == 0:
+        return r""
+    
+    return r"(?=.*({}))(?=.*({}))".format("|".join(area_keywords), "|".join(other_keywords))
+
 spider_controller = APIRouter()
 
 
@@ -47,24 +57,20 @@ async def get_baidu_news(args: BaiduNewsSpiderArgs,
                          rules: ScrapeRules = Depends(load_config),
                          spider_logger: Logger = Depends(create_logger)):
     try:
-        if len(args.theme_keywords) == 0 or len(args.epidemic_keywords) == 0:
-            return Response(message="theme_keywords and epidemic_keywords are required",
+        if len(args.area_keywords) == 0 and len(args.theme_keywords) == 0 and len(args.epidemic_keywords) == 0:
+            return Response(message="area_keywords, theme_keywords and epidemic_keywords are required",
                             status="failed",
                             statusCode=412)
         
-        keyword_combination = []
-        if len(args.area_keywords) > 0:
-            keyword_combination = product([f"\"{kw}\"" for kw in args.area_keywords],
-                                          [kw.keyword for kw in args.theme_keywords],
-                                          [f"\"{kw}\"" for kw in args.epidemic_keywords])
-            rules.keywords.must_include = args.area_keywords + args.epidemic_keywords
-        else:
-            keyword_combination = product([kw.keyword for kw in args.theme_keywords],
-                                          [f"\"{kw}\"" for kw in args.epidemic_keywords])
-            rules.keywords.must_include = args.epidemic_keywords
+        theme_keywords = [kw.keyword for kw in args.theme_keywords]
+        keyword_combination = f"{build_keyword(args.area_keywords)}+" +\
+                                f"{build_keyword(theme_keywords)}+" +\
+                                f"{build_keyword(args.epidemic_keywords)}"
+        article_pattern = build_pattern(args.area_keywords, theme_keywords+args.epidemic_keywords)
             
         # "%2B" is url encoded form of + sign
-        rules.keywords.include = ["%2B".join(keywords) for keywords in keyword_combination]
+        rules.keywords.include = [keyword_combination]
+        rules.url_patterns = [article_pattern]
         
         rules.theme_id = args.theme_id
         rules.time_range.past_days = args.past_days

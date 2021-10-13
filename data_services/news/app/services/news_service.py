@@ -1,11 +1,14 @@
-from typing import List
-from pydantic import BaseModel
-from .base import BaseAsyncCRUDService
-from ..models.db_models import NewsDBModel
-from ..models.data_models import News
-import traceback
 import logging
+import traceback
 from logging import Logger
+from typing import List
+
+import pandas as pd
+from pydantic import BaseModel
+
+from ..models.data_models import News
+from ..models.db_models import NewsDBModel
+from .base import BaseAsyncCRUDService
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(funcName)s | %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
@@ -24,6 +27,20 @@ class NewsService(BaseAsyncCRUDService):
         self._data_model = data_model
         self._db_model = db_model
         self._logger = logger
+        
+    def _to_dataframe(self, data: List[BaseModel]):
+        data_list = [d.dict() for d in data]
+        return pd.DataFrame(data_list)
+
+    def _remove_duplicates(self, df, sort_columns: List[str], unique_columns: List[str]):
+        return df.sort_values(by=sort_columns).drop_duplicates(
+            subset=unique_columns, keep='last')
+        
+    def _unique(self, news_list: List[NewsDBModel]):
+        news_df = self._to_dataframe(news_list)
+        unique_news_df = self._remove_duplicates(
+            news_df, sort_columns=['create_dt'], unique_columns=['summary'])
+        return [self._db_model.parse_obj(record) for record in unique_news_df.to_dict(orient='records')]
 
     async def get_many(self, query: dict, page_size: int = 0, page_number: int = 0) -> List[News]:
         """ Get the most recent aqi report for db
@@ -33,12 +50,26 @@ class NewsService(BaseAsyncCRUDService):
             limit = page_size
             skip = page_size * page_number
             news_list: List[NewsDBModel] = await self._db_model.get(query, limit=limit, skip=skip)
-            return [self._data_model.parse_obj(report) for report in news_list]
+            
+            return [self._data_model.parse_obj(report) for report in self._unique(news_list)]
 
         except Exception as e:
             traceback.print_exc()
             self._logger.error(f"Error: {e}")
             return []
+        
+        
+    async def count(self, query: dict) -> int:
+        try:
+            # TODO: remove duplicate entries
+            news_count = await self._db_model.count(query)
+
+            return news_count
+
+        except Exception as e:
+            traceback.print_exc()
+            self._logger.error(f"Error: {e}")
+            return 0
 
     async def add_one(self, data: BaseModel) -> BaseModel:
         return NotImplemented
@@ -64,7 +95,9 @@ class NewsService(BaseAsyncCRUDService):
 
 if __name__ == "__main__":
     import asyncio
+
     from devtools import debug
+
     from ..db.client import create_client
 
     async def main():

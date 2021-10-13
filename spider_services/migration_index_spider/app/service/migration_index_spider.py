@@ -2,6 +2,7 @@ import ujson
 import asyncio
 from typing import Any, Tuple
 from datetime import datetime, timedelta
+from pandas import date_range
 from pymongo import UpdateOne
 from typing import List, Callable
 from ....common.service.base_services import BaseSpiderService
@@ -67,7 +68,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
              type(response['data']['list']) is dict and
              len(response['data']['list']) > 0)])
             
-    def _to_migration_index(self, data: dict, areaCode: str, migration_type: str, mode: str = 'update') -> List[MigrationIndex]:
+    def _to_migration_index(self, data: dict, areaCode: str, start_date: datetime, end_date: datetime, migration_type: str, mode: str = 'update') -> List[MigrationIndex]:
         """ Convert json to list of migration index data
 
         Args:
@@ -95,6 +96,15 @@ class MigrationIndexSpiderService(BaseSpiderService):
                             migration_index=data['data']['list'][yesterday])]
                 else:
                     self._logger.info(f"No available data, last date is {list(data['data']['list'].keys())[-1]}")
+            elif mode == 'fill':
+                fill_date_range = date_range(start_date, end_date)
+                migration_indexes = [
+                    self._result_data_model(
+                        areaCode=areaCode,
+                        date=date.strftime('%Y%m%d'),
+                        migration_type=migration_type,
+                        migration_index=data['data']['list'][date.strftime('%Y%m%d')])
+                    for date in fill_date_range if date.strftime('%Y%m%d') in data['data']['list']]
             else:
                 migration_indexes = [
                     self._result_data_model(
@@ -135,7 +145,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
             self._logger.error(e)
             return ""
         
-    def _parse_migration_api_response(self, responses: List[Tuple[str, str]], migration_type: str, mode: str = 'update') -> List[MigrationIndex]:
+    def _parse_migration_api_response(self, responses: List[Tuple[str, str]], migration_type: str, start_date: datetime, end_date: datetime, mode: str = 'update') -> List[MigrationIndex]:
         """Parse response data from migration index api and convert them to MigrationIndex objects. 
 
         Args:
@@ -152,7 +162,7 @@ class MigrationIndexSpiderService(BaseSpiderService):
                 url, resp_data = response
                 areaCode = self._url_to_area_code(url)
                 parsed_response = self._parse_jsonp(resp_data)
-                migration_indexes = self._to_migration_index(parsed_response, areaCode, migration_type, mode)
+                migration_indexes = self._to_migration_index(parsed_response, areaCode, start_date, end_date, migration_type, mode)
                 migration_data.extend(migration_indexes)
             
             return migration_data
@@ -162,13 +172,15 @@ class MigrationIndexSpiderService(BaseSpiderService):
             self._logger.error(e)
             return []
         
-    async def _crawl_migration_indexes(self, base_url: str, area_codes: List[str], migration_type: str, max_retry: int, max_concurrency: int, mode: str = 'update') -> List[MigrationIndex]:
+    async def _crawl_migration_indexes(self, base_url: str, area_codes: List[str], 
+                                       start_date: datetime, end_date: datetime, migration_type: str,
+                                       max_retry: int, max_concurrency: int, mode: str = 'update') -> List[MigrationIndex]:
         try:
             data_urls = self._get_migration_index_urls(base_url, area_codes, migration_type)
             spiders = self._spider_class.create_from_urls(
                 data_urls, self._request_client, max_retry)
             migration_api_responses = await self._throttled_fetch(max_concurrency, [spider.fetch() for spider in spiders])
-            migration_indexes = self._parse_migration_api_response(migration_api_responses, migration_type, mode)
+            migration_indexes = self._parse_migration_api_response(migration_api_responses, migration_type, start_date, end_date, mode)
             return migration_indexes
         except Exception as e:
             traceback.print_exc()
@@ -176,13 +188,16 @@ class MigrationIndexSpiderService(BaseSpiderService):
             return []
           
     async def _batch_update(self, migration_indexes: List[MigrationIndexDBModel]):
-        batch_update_op = [UpdateOne({'date': index.date, 'areaCode': index.areaCode}, {'$set': index.mongo(update=True)}, upsert=True)
+        batch_update_op = [UpdateOne({'date': index.date, 'areaCode': index.areaCode, 'migration_type': index.migration_type},
+                                     {'$set': index.mongo(update=True)}, upsert=True)
                            for index in migration_indexes]
         await self._result_db_model.bulk_write(batch_update_op)
           
     async def crawl(self, urls: List[str], rules: ScrapeRules):
         try:
-            if len(urls) == 0 or rules is None:
+            if (len(urls) == 0 or rules is None or rules.keywords is None or 
+                rules.keywords.include is None or rules.time_range is None or
+                rules.time_range.start_date is None or rules.time_range.end_date is None):
                 self._logger.error("No url or rules are specified.")
                 return
             
@@ -191,15 +206,15 @@ class MigrationIndexSpiderService(BaseSpiderService):
             areaCodes = rules.keywords.include
             move_in_indexes, move_out_indexes = await self._throttled_fetch(
                 rules.max_concurrency, [
-                    self._crawl_migration_indexes(base_url, areaCodes, 'move_in', rules.max_retry, rules.max_concurrency, rules.mode),
-                    self._crawl_migration_indexes(base_url, areaCodes, 'move_out', rules.max_retry, rules.max_concurrency, rules.mode)
+                    self._crawl_migration_indexes(base_url, areaCodes, rules.time_range.start_date, rules.time_range.end_date, 
+                                                  'move_in', rules.max_retry, rules.max_concurrency, rules.mode),
+                    self._crawl_migration_indexes(base_url, areaCodes, rules.time_range.start_date,rules.time_range.end_date, 
+                                                  'move_out', rules.max_retry, rules.max_concurrency, rules.mode)
                 ])
-            self._logger.info(move_in_indexes)
-            self._logger.info(move_out_indexes)
             migration_indexes = move_in_indexes + move_out_indexes
             migration_indexes_db_objects = self._result_db_model.parse_many(migration_indexes)
             
-            if rules.mode == 'update':
+            if rules.mode == 'update' or rules.mode == 'fill':
                 if len(migration_indexes_db_objects) == 0:
                     self._logger.info("Nothing to update")
                     return

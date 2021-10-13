@@ -1,5 +1,10 @@
 from datetime import date, datetime, timedelta, time
 from typing import List, Any, Callable
+from spider_services.common.core.parser import ParserContextFactory
+
+from spider_services.common.core.request_client import BaseRequestClient
+from spider_services.common.core.spider import BaseSpider
+from spider_services.common.models.request_models.request_models import ParsingPipeline
 from ...common.service.base_services import BaseSpiderService
 from ...common.models.db_models import PHESCOVIDReport
 from ...common.models.request_models import ScrapeRules
@@ -28,32 +33,30 @@ spider_service_logger.setLevel(logging.DEBUG)
 class DXYCovidReportSpiderService(BaseSpiderService):
 
     def __init__(self,
-                 request_client: AsyncBrowserRequestClient,
+                 request_client: BaseRequestClient,
                  result_db_model: PHESCOVIDReport,
                  result_data_model: PHESCOVIDReportData,
+                 spider_class: BaseSpider,
+                 parse_strategy_factory: ParserContextFactory,
                  throttled_fetch: Callable = throttled,
                  logger: Logger = spider_service_logger):
         self._browser_request_client = request_client
         self._result_db_model = result_db_model
         self._result_data_model = result_data_model
+        self._spider_class = spider_class
+        self._parser_factory = parse_strategy_factory
         self._throttled_fetch = throttled_fetch
         self._logger = logger
         
     
-    async def _load_report_data(self, url):
+    async def _load_report_data(self, url: str, parse_step: ParsingPipeline):
         try:
-            await self._browser_request_client.launch_browser()
-            page = await self._browser_request_client.browser.newPage()
-            await page.goto(url)
-            report_data = await page.evaluate(
-                """
-                () => {
-                    return window.getAreaStat
-                }
-                """)
-            await self._browser_request_client.close()
-            covid_report = [DXYCOVIDReportData.parse_obj(report)
-                            for report in report_data]
+            spider = self._spider_class(request_client=self._request_client, url_to_request=url)
+            page = await spider.fetch()
+            parser = self._parser_factory.create(parse_step.parser)
+            parsed_result = parser.parse(page, parse_step.parse_rules)
+            covid_report = [DXYCOVIDReportData.parse_obj(report.value_to_dict())
+                            for report in parsed_result]
             return covid_report
         except Exception as e:
             self._logger.error(e)
@@ -490,3 +493,139 @@ class DXYCovidReportSpiderService(BaseSpiderService):
             self._logger.error(e)
             raise e
     
+
+
+
+
+if __name__ == "__main__":
+    import asyncio
+    from os import getcwd
+    from typing import Any
+
+    from devtools import debug
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from yaml import CDumper as Dumper
+    from yaml import CLoader as Loader
+    from yaml import dump, load
+
+    from ...common.core import CrawlerContextFactory, RequestClient, Spider
+    from ...common.models.data_models import RequestHeader
+    from ...common.models.request_models import (KeywordRules, ParseRule,
+                                                 ParsingPipeline, ScrapeRules,
+                                                 TimeRange)
+
+
+    def create_client(host: str, username: str,
+                      password: str, port: int,
+                      db_name: str) -> AsyncIOMotorClient:
+        return AsyncIOMotorClient(
+            f"mongodb://{username}:{password}@{host}:{port}/{db_name}?authSource=admin")
+
+
+    def load_service_config(
+        config_name: str,
+        loader_func: Callable=load,
+        loader_class: Any=Loader,
+        config_class: Any = ScrapeRules,
+        config_path: str = f"{getcwd()}/spider_services/service_configs"
+    ) -> object:
+        with open(f"{config_path}/{config_name}.yml", "r") as f:
+            config_text = f.read()
+            parsed_obj = loader_func(config_text, Loader=loader_class)
+            config_obj = config_class.parse_obj(parsed_obj)
+            return config_obj
+
+    def save_config(config, path, dump: Any = dump, dump_class: Any = Dumper):
+        with open(path, 'w+') as f:
+            config_text = dump(config, Dumper=dump_class)
+            f.write(config_text)
+            
+    def make_cookies(cookie_text):
+        cookie_strings = cookie_text.replace("\n", "").replace(" ", "").split(";")
+        cookies = {}
+        for cookie_str in cookie_strings:
+            try:
+                key, value = cookie_str.split("=")
+                cookies[key] = value
+            except IndexError:
+                print(cookie_str)
+            except ValueError:
+                print(cookie_str)
+        return cookies
+
+    async def test_spider_services(db_client,
+                                   db_name,
+                                   headers,
+                                   cookies,
+                                   client_session_class,
+                                   spider_class,
+                                   parse_strategy_factory,
+                                   crawling_strategy_factory,
+                                   spider_service_class,
+                                   data_model,
+                                   result_model_class,
+                                   test_urls,
+                                   rules):
+        db = db_client[db_name]
+        result_model_class.db = db
+
+        async with (await client_session_class(headers=headers, cookies=cookies)) as client_session:
+            article_classification_service = ArticleClassificationService(
+                'http://localhost:9000/article-category', client_session, ArticleCategory)
+            article_popularity_service = ArticlePopularityService(
+                'http://localhost:9000/article-popularity', client_session, ArticlePopularity
+            )
+            article_summary_service = ArticleSummaryService(
+                'http://localhost:9000/content-abstract', client_session, ArticleSummary
+            )
+
+            spider_service = spider_service_class(request_client=client_session,
+                                                  spider_class=spider_class,
+                                                  parse_strategy_factory=parse_strategy_factory,
+                                                  crawling_strategy_factory=crawling_strategy_factory,
+                                                  data_model=data_model,
+                                                  db_model=result_model_class,
+                                                  article_classification_service=article_classification_service,
+                                                  article_popularity_service=article_popularity_service,
+                                                  article_summary_service=article_summary_service)
+            await spider_service.crawl(test_urls, rules)
+
+    cookie_text = """
+    BIDUPSID=C2730507E1C86942858719FD87A61E58; PSTM=1591763607; BDUSS=1jdUJiZUIxc01RfkFTTUtoTXZaSFl1SDlPdEgzeGJGVEhkTDZzZ2ZIZlJSM1ZmSVFBQUFBJCQAAAAAAAAAAAEAAACILlzpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANG6TV~Ruk1fek; __yjs_duid=1_9e0d11606e81d46981d7148cc71a1d391618989521258; BCLID_BFESS=7682355843953324419; BDSFRCVID_BFESS=D74OJeC6263c72vemTUDrgjXg2-lavcTH6f3bGYZSp4POsT0C6gqEG0PEf8g0KubxY84ogKK3gOTH4PF_2uxOjjg8UtVJeC6EG0Ptf8g0f5; H_BDCLCKID_SF_BFESS=tbu8_IIMtCI3enb6MJ0_-P4DePop3MRZ5mAqoDLbKK0KfR5z3hoMK4-qWMtHe47KbD7naIQDtbonofcbK5OmXnt7D--qKbo43bRTKRLy5KJvfJo9WjAMhP-UyNbMWh37JNRlMKoaMp78jR093JO4y4Ldj4oxJpOJ5JbMonLafD8KbD-wD5LBeP-O5UrjetJyaR3R_KbvWJ5TMC_CDP-bDRK8hJOP0njM2HbMoj6sK4QjShPCb6bDQpFl0p0JQUReQnRm_J3h3l02Vh5Ie-t2ynLV2buOtPRMW20e0h7mWIbmsxA45J7cM4IseboJLfT-0bc4KKJxbnLWeIJIjj6jK4JKDG8ft5OP; BDUSS_BFESS=1jdUJiZUIxc01RfkFTTUtoTXZaSFl1SDlPdEgzeGJGVEhkTDZzZ2ZIZlJSM1ZmSVFBQUFBJCQAAAAAAAAAAAEAAACILlzpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANG6TV~Ruk1fek; H_WISE_SIDS=110085_127969_128698_164869_170704_171235_173017_173293_174035_174449_174661_174665_175038_175407_175609_175665_175756_176157_176348_176398_176418_176589_176678_176766_176960_176995_177085_177094_177168_177283_177317_177393_177401_177412_177520_177522_177565_177632_177727_177735_177787_178076_178152_178205_178327_178384_178639; BAIDUID=F77119553DDCA3E3D26F14FA5EBF834C:FG=1; BAIDUID_BFESS=F77119553DDCA3E3D26F14FA5EBF834C:FG=1; delPer=0; PSINO=7; BAIDU_WISE_UID=wapp_1632905041500_81;  BDORZ=B490B5EBF6F3CD402E515D22BCDA1598; BA_HECTOR=208500852hak2l047b1gldcon0q; H_PS_PSSID=; MBDFEEDSG=df5a2f94d6addda8f42862cac42480f2_1633073378; ab_sr=1.0.1_NDQ3Yjc4OTliYTExNWM4YmVjZDY4YTQzZmIyZWJhM2VjZDg2MmU2OGVlMzMxZTUyMmU0ZDE1NGZiMjI0OWU2OWI5NGQwZGQ5ODIzMTZjOTA1MzI5NjdhZTM5NDNmMjIwZjhjZWRlNDQyYjVjNTUyZDc5MWI2MGU5MGM2OTAyNjcyMDRkMTQ1ODRlOTFmNjZiMTE5NDIyN2JjYWYzZDFkMw==
+    """
+    cookies = make_cookies(cookie_text)
+
+    headers = RequestHeader(
+        accept="text/html, application/xhtml+xml, application/xml, image/webp, */*",
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",)
+    use_db = 'test'
+    db_client = create_client(host='localhost',
+                              username='admin',
+                              password='root',
+                              port=27017,
+                              db_name=use_db)
+    urls = [
+        "http://www.baidu.com/s?tn=news&ie=utf-8"
+    ]
+    print(urls)
+    config = load_service_config("baidu_news")
+    debug(config)
+    
+    
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(test_spider_services(
+        db_client=db_client,
+        db_name=use_db,
+        headers=headers.dict(),
+        cookies=cookies,
+        client_session_class=RequestClient,
+        spider_class=Spider,
+        parse_strategy_factory=ParserContextFactory,
+        crawling_strategy_factory=CrawlerContextFactory,
+        spider_service_class=BaiduNewsSpiderService,
+        data_model=News,
+        result_model_class=NewsDBModel,
+        test_urls=urls,
+        rules=config
+    ))
+
